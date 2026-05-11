@@ -68,4 +68,13 @@ export const moveGrid = (grid, direction) => {
     }
   }
   return { grid: changed ? spawnTile(newGrid) : newGrid, score: totalScore, changed };
+}
+export const getPreviousState = (history) => {
+  if (history.length > 1) {
+    const newHistory = [...history];
+    newHistory.pop(); // Remove current state
+    const previousState = newHistory[newHistory.length - 1];
+    return { previousState, newHistory };
+  }
+  return null;
 };

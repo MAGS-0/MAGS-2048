@@ -1,26 +1,24 @@
 {
   "expo": {
-    "name": "MAGS-2048",
-    "slug": "MAGS-2048",
+    "name": "MAGS 2048",
+    "slug": "mags-2048",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#faf8ef"
     },
     "ios": {
       "supportsTablet": true
     },
     "android": {
+      "package": "com.mags2048.android",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true
+        "backgroundColor": "#faf8ef"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"

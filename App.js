@@ -3,13 +3,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { AdProvider } from './src/context/AdContext';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import GameScreen from './src/screens/GameScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import GameScreen from './src/screens/GameScreen';
-
-// ... inside Stack.Navigator ...
-<Stack.Screen name="Home" component={HomeScreen} />
-<Stack.Screen name="Game" component={GameScreen} />
 
 const Stack = createStackNavigator();
 
@@ -18,7 +13,11 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AdProvider>
         <NavigationContainer>
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Navigator 
+            initialRouteName="Home" 
+            screenOptions={{ headerShown: false }}
+          >
+            <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="Game" component={GameScreen} />
           </Stack.Navigator>
         </NavigationContainer>
