@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, Dimensions, PanResponder, Alert } from 'react-native';
+import { StyleSheet, View, Text, Dimensions, PanResponder, Alert, TouchableOpacity } from 'react-native';
 import { initializeGrid, moveGrid } from '../utils/gameLogic';
 import { saveGameState, loadGameState, getHighScore, saveHighScore } from '../utils/storage';
 
 const { width } = Dimensions.get('window');
 const CELL_SIZE = (width - 40) / 4;
 
-export default function GameScreen() {
+export default function GameScreen({ navigation }) {
   const [grid, setGrid] = useState(initializeGrid());
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
+  const [history, setHistory] = useState([]);
 
-  // Phase 3: Load saved game on startup
+  // Load saved game on startup
   useEffect(() => {
     const init = async () => {
       const saved = await loadGameState();
@@ -28,16 +29,30 @@ export default function GameScreen() {
   const handleMove = (direction) => {
     const { grid: newGrid, score: addedScore, changed } = moveGrid(grid, direction);
     if (changed) {
+      // Save current state to history BEFORE moving for Undo
+      setHistory(prev => [...prev, { grid: JSON.parse(JSON.stringify(grid)), score }]);
+      
       const nextScore = score + addedScore;
       setGrid(newGrid);
       setScore(nextScore);
       
-      // Phase 3: Save progress after every successful move
       saveGameState(newGrid, nextScore);
       if (nextScore > highScore) {
         setHighScore(nextScore);
         saveHighScore(nextScore);
       }
+    }
+  };
+
+  const handleUndo = () => {
+    if (history.length > 0) {
+      const previousState = history[history.length - 1];
+      setGrid(previousState.grid);
+      setScore(previousState.score);
+      setHistory(prev => prev.slice(0, -1)); // Remove last entry from history
+      saveGameState(previousState.grid, previousState.score);
+    } else {
+      Alert.alert("No moves to undo!");
     }
   };
 
@@ -76,6 +91,15 @@ export default function GameScreen() {
           <Text style={styles.scoreValue}>{highScore}</Text>
         </View>
       </View>
+
+      <View style={styles.controls}>
+        <TouchableOpacity style={styles.undoButton} onPress={handleUndo}>
+          <Text style={styles.undoButtonText}>UNDO</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.homeButton} onPress={() => navigation.navigate('Home')}>
+          <Text style={styles.undoButtonText}>HOME</Text>
+        </TouchableOpacity>
+      </View>
       
       <View style={styles.grid}>
         {grid.map((row, r) => row.map((cell, c) => (
@@ -92,10 +116,14 @@ export default function GameScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#faf8ef', alignItems: 'center', justifyContent: 'center' },
-  header: { flexDirection: 'row', marginBottom: 20, width: width - 40, justifyContent: 'space-between' },
+  header: { flexDirection: 'row', marginBottom: 10, width: width - 40, justifyContent: 'space-between' },
   scoreContainer: { backgroundColor: '#bbada0', padding: 10, borderRadius: 5, alignItems: 'center', minWidth: 80 },
   scoreLabel: { color: '#eee4da', fontSize: 12, fontWeight: 'bold' },
   scoreValue: { color: '#ffffff', fontSize: 20, fontWeight: 'bold' },
+  controls: { flexDirection: 'row', marginBottom: 20, width: width - 40, justifyContent: 'space-between' },
+  undoButton: { backgroundColor: '#8f7a66', padding: 10, borderRadius: 5, width: '45%', alignItems: 'center' },
+  homeButton: { backgroundColor: '#bbada0', padding: 10, borderRadius: 5, width: '45%', alignItems: 'center' },
+  undoButtonText: { color: '#ffffff', fontWeight: 'bold' },
   grid: { width: width - 20, height: width - 20, backgroundColor: '#bbada0', padding: 5, borderRadius: 5, flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: CELL_SIZE - 10, height: CELL_SIZE - 10, margin: 5, borderRadius: 5, justifyContent: 'center', alignItems: 'center' },
   cellText: { fontSize: 24, fontWeight: 'bold' }
