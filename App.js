@@ -4,6 +4,12 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { AdProvider } from './src/context/AdContext';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import GameScreen from './src/screens/GameScreen';
+import HomeScreen from './src/screens/HomeScreen';
+import GameScreen from './src/screens/GameScreen';
+
+// ... inside Stack.Navigator ...
+<Stack.Screen name="Home" component={HomeScreen} />
+<Stack.Screen name="Game" component={GameScreen} />
 
 const Stack = createStackNavigator();
 
