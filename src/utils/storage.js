@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { db } from './firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
 const STORAGE_KEYS = {
   GRID: 'MAGS_2048_GRID',
@@ -42,9 +44,17 @@ export const saveHighScore = async (score) => {
   try {
     const currentHigh = await getHighScore();
     if (score > currentHigh) {
+      // 1. Save Locally
       await AsyncStorage.setItem(STORAGE_KEYS.HIGH_SCORE, JSON.stringify(score));
+      
+      // 2. Save to Cloud (Firestore)
+      // We use 'Anonymous_User' for now until we add login logic
+      await setDoc(doc(db, "leaderboard", "Anonymous_User"), {
+        highScore: score,
+        lastUpdated: new Date()
+      }, { merge: true });
     }
   } catch (e) {
-    console.error('Error saving high score', e);
+    console.error('Error syncing score to cloud', e);
   }
 };
