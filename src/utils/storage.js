@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
   GRID: 'MAGS_2048_GRID',
   SCORE: 'MAGS_2048_SCORE',
   HIGH_SCORE: 'MAGS_2048_HIGH_SCORE',
+  LEADERBOARD: 'MAGS_2048_LEADERBOARD',
 };
 
 export const saveGameState = async (grid, score) => {
@@ -48,7 +49,6 @@ export const saveHighScore = async (score) => {
       await AsyncStorage.setItem(STORAGE_KEYS.HIGH_SCORE, JSON.stringify(score));
       
       // 2. Save to Cloud (Firestore)
-      // We use 'Anonymous_User' for now until we add login logic
       await setDoc(doc(db, "leaderboard", "Anonymous_User"), {
         highScore: score,
         lastUpdated: new Date()
@@ -56,5 +56,29 @@ export const saveHighScore = async (score) => {
     }
   } catch (e) {
     console.error('Error syncing score to cloud', e);
+  }
+};
+
+export const saveToLeaderboard = async (newScore) => {
+  try {
+    const existingLeaderboard = await AsyncStorage.getItem(STORAGE_KEYS.LEADERBOARD);
+    let scores = existingLeaderboard ? JSON.parse(existingLeaderboard) : [];
+    
+    scores.push({ score: newScore, date: new Date().toLocaleDateString() });
+    scores.sort((a, b) => b.score - a.score);
+    scores = scores.slice(0, 5);
+
+    await AsyncStorage.setItem(STORAGE_KEYS.LEADERBOARD, JSON.stringify(scores));
+  } catch (e) {
+    console.error("Error saving to leaderboard", e);
+  }
+};
+
+export const getLeaderboard = async () => {
+  try {
+    const scores = await AsyncStorage.getItem(STORAGE_KEYS.LEADERBOARD);
+    return scores ? JSON.parse(scores) : [];
+  } catch (e) {
+    return [];
   }
 };

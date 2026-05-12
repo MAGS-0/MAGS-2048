@@ -77,4 +77,25 @@ export const getPreviousState = (history) => {
     return { previousState, newHistory };
   }
   return null;
+}
+export const isGameOver = (grid) => {
+  // 1. Check if there are any empty cells
+  if (getEmptyCells(grid).length > 0) return false;
+
+  // 2. Check if any adjacent cells can merge (Horizontal)
+  for (let r = 0; r < GRID_SIZE; r++) {
+    for (let c = 0; c < GRID_SIZE - 1; c++) {
+      if (grid[r][c] === grid[r][c + 1]) return false;
+    }
+  }
+
+  // 3. Check if any adjacent cells can merge (Vertical)
+  for (let c = 0; c < GRID_SIZE; c++) {
+    for (let r = 0; r < GRID_SIZE - 1; r++) {
+      if (grid[r][c] === grid[r + 1][c]) return false;
+    }
+  }
+
+  // If no empty cells and no possible merges, it's Game Over
+  return true;
 };

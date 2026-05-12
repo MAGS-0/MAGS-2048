@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, Dimensions, PanResponder, Alert, TouchableOpacity } from 'react-native';
-import { initializeGrid, moveGrid } from '../utils/gameLogic';
-import { saveGameState, loadGameState, getHighScore, saveHighScore } from '../utils/storage';
+import { initializeGrid, moveGrid, isGameOver } from '../utils/gameLogic';
+import { saveGameState, loadGameState, getHighScore, saveHighScore, saveToLeaderboard } from '../utils/storage';
 
 const { width } = Dimensions.get('window');
 const CELL_SIZE = (width - 40) / 4;
@@ -12,7 +12,6 @@ export default function GameScreen({ navigation }) {
   const [highScore, setHighScore] = useState(0);
   const [history, setHistory] = useState([]);
 
-  // Load saved game on startup
   useEffect(() => {
     const init = async () => {
       const saved = await loadGameState();
@@ -26,20 +25,41 @@ export default function GameScreen({ navigation }) {
     init();
   }, []);
 
-  const handleMove = (direction) => {
-    const { grid: newGrid, score: addedScore, changed } = moveGrid(grid, direction);
-    if (changed) {
-      // Save current state to history BEFORE moving for Undo
+  const resetGame = () => {
+    const newGrid = initializeGrid();
+    setGrid(newGrid);
+    setScore(0);
+    setHistory([]);
+    saveGameState(newGrid, 0);
+  };
+
+  const handleMove = async (direction) => {
+    const result = moveGrid(grid, direction);
+    
+    if (result.changed) {
+      // Save for Undo
       setHistory(prev => [...prev, { grid: JSON.parse(JSON.stringify(grid)), score }]);
       
-      const nextScore = score + addedScore;
-      setGrid(newGrid);
+      const nextScore = score + result.score;
+      const nextGrid = result.grid;
+
+      setGrid(nextGrid);
       setScore(nextScore);
       
-      saveGameState(newGrid, nextScore);
+      saveGameState(nextGrid, nextScore);
+
       if (nextScore > highScore) {
         setHighScore(nextScore);
         saveHighScore(nextScore);
+      }
+
+      // Check for Game Over
+      if (isGameOver(nextGrid)) {
+        await saveToLeaderboard(nextScore);
+        Alert.alert("Game Over", `Your final score is ${nextScore}`, [
+          { text: "Return Home", onPress: () => navigation.navigate('Home') },
+          { text: "Try Again", onPress: () => resetGame() } 
+        ]);
       }
     }
   };
@@ -49,7 +69,7 @@ export default function GameScreen({ navigation }) {
       const previousState = history[history.length - 1];
       setGrid(previousState.grid);
       setScore(previousState.score);
-      setHistory(prev => prev.slice(0, -1)); // Remove last entry from history
+      setHistory(prev => prev.slice(0, -1));
       saveGameState(previousState.grid, previousState.score);
     } else {
       Alert.alert("No moves to undo!");
