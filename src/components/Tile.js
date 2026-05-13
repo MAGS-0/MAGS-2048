@@ -1,37 +1,29 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
 
-export default function Tile({ value, cellSize }) {
-  // Animation values
-  const scaleValue = useRef(new Animated.Value(0)).current; // For the "Pop" entry
-  const pulseValue = useRef(new Animated.Value(1)).current; // For the "Merge"
+export default function Tile({ value, cellSize, isNew, isMerged }) {
+  const scaleValue = useRef(new Animated.Value(isNew ? 0 : 1)).current;
+  const pulseValue = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (value !== 0) {
-      // 1. Entry Animation: Scale from 0 to 1
-      Animated.spring(scaleValue, {
-        toValue: 1,
-        friction: 4,
-        useNativeDriver: true,
-      }).start();
-
-      // 2. Merge Animation: If the tile value just changed/merged, pulse it
-      Animated.sequence([
-        Animated.timing(pulseValue, {
-          toValue: 1.15,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseValue, {
+      if (isNew) {
+        scaleValue.setValue(0);
+        Animated.spring(scaleValue, {
           toValue: 1,
-          duration: 100,
+          friction: 4,
           useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      scaleValue.setValue(0);
+        }).start();
+      }
+
+      if (isMerged) {
+        Animated.sequence([
+          Animated.timing(pulseValue, { toValue: 1.15, duration: 100, useNativeDriver: true }),
+          Animated.timing(pulseValue, { toValue: 1, duration: 100, useNativeDriver: true }),
+        ]).start();
+      }
     }
-  }, [value]);
+  }, [value, isNew, isMerged]);
 
   const getTileStyle = (val) => {
     const colors = {
@@ -62,15 +54,14 @@ export default function Tile({ value, cellSize }) {
 }
 
 const styles = StyleSheet.create({
-  tile: {
-    margin: 5,
-    borderRadius: 5,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'absolute', // Allows for smoother layout transitions
+  tile: { 
+    margin: 5, 
+    borderRadius: 5, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
   },
-  tileText: {
-    fontSize: 24,
-    fontWeight: 'bold',
+  tileText: { 
+    fontSize: 24, 
+    fontWeight: 'bold' 
   },
 });

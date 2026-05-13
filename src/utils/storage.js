@@ -1,84 +1,75 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { db } from './firebase';
-import { doc, setDoc } from 'firebase/firestore';
 
-const STORAGE_KEYS = {
-  GRID: 'MAGS_2048_GRID',
-  SCORE: 'MAGS_2048_SCORE',
-  HIGH_SCORE: 'MAGS_2048_HIGH_SCORE',
-  LEADERBOARD: 'MAGS_2048_LEADERBOARD',
-};
+const GAME_STATE_KEY = '@mags_2048_game_state';
+const HIGH_SCORE_KEY = '@mags_2048_high_score';
+const USERNAME_KEY = '@mags_2048_username';
 
+// Save the current grid and score
 export const saveGameState = async (grid, score) => {
   try {
-    await AsyncStorage.setItem(STORAGE_KEYS.GRID, JSON.stringify(grid));
-    await AsyncStorage.setItem(STORAGE_KEYS.SCORE, JSON.stringify(score));
+    const jsonValue = JSON.stringify({ grid, score });
+    await AsyncStorage.setItem(GAME_STATE_KEY, jsonValue);
   } catch (e) {
-    console.error('Error saving game state', e);
+    console.error("Error saving game state", e);
   }
 };
 
+// Load the saved grid and score
 export const loadGameState = async () => {
   try {
-    const grid = await AsyncStorage.getItem(STORAGE_KEYS.GRID);
-    const score = await AsyncStorage.getItem(STORAGE_KEYS.SCORE);
-    return {
-      grid: grid ? JSON.parse(grid) : null,
-      score: score ? JSON.parse(score) : 0,
-    };
+    const jsonValue = await AsyncStorage.getItem(GAME_STATE_KEY);
+    return jsonValue != null ? JSON.parse(jsonValue) : null;
   } catch (e) {
-    console.error('Error loading game state', e);
+    console.error("Error loading game state", e);
     return null;
   }
 };
 
+// Save the personal high score
+export const saveHighScore = async (score) => {
+  try {
+    await AsyncStorage.setItem(HIGH_SCORE_KEY, score.toString());
+  } catch (e) {
+    console.error("Error saving high score", e);
+  }
+};
+
+// Get the personal high score
 export const getHighScore = async () => {
   try {
-    const highScore = await AsyncStorage.getItem(STORAGE_KEYS.HIGH_SCORE);
-    return highScore ? JSON.parse(highScore) : 0;
+    const value = await AsyncStorage.getItem(HIGH_SCORE_KEY);
+    return value != null ? parseInt(value, 10) : 0;
   } catch (e) {
+    console.error("Error getting high score", e);
     return 0;
   }
 };
 
-export const saveHighScore = async (score) => {
+// Save the player's name
+export const saveUsername = async (name) => {
   try {
-    const currentHigh = await getHighScore();
-    if (score > currentHigh) {
-      // 1. Save Locally
-      await AsyncStorage.setItem(STORAGE_KEYS.HIGH_SCORE, JSON.stringify(score));
-      
-      // 2. Save to Cloud (Firestore)
-      await setDoc(doc(db, "leaderboard", "Anonymous_User"), {
-        highScore: score,
-        lastUpdated: new Date()
-      }, { merge: true });
-    }
+    await AsyncStorage.setItem(USERNAME_KEY, name);
   } catch (e) {
-    console.error('Error syncing score to cloud', e);
+    console.error("Error saving username", e);
   }
 };
 
-export const saveToLeaderboard = async (newScore) => {
+// Retrieve the player's name
+export const getUsername = async () => {
   try {
-    const existingLeaderboard = await AsyncStorage.getItem(STORAGE_KEYS.LEADERBOARD);
-    let scores = existingLeaderboard ? JSON.parse(existingLeaderboard) : [];
-    
-    scores.push({ score: newScore, date: new Date().toLocaleDateString() });
-    scores.sort((a, b) => b.score - a.score);
-    scores = scores.slice(0, 5);
-
-    await AsyncStorage.setItem(STORAGE_KEYS.LEADERBOARD, JSON.stringify(scores));
+    const name = await AsyncStorage.getItem(USERNAME_KEY);
+    return name;
   } catch (e) {
-    console.error("Error saving to leaderboard", e);
+    console.error("Error getting username", e);
+    return null;
   }
 };
 
-export const getLeaderboard = async () => {
+// Clear all data (optional, for debugging)
+export const clearStorage = async () => {
   try {
-    const scores = await AsyncStorage.getItem(STORAGE_KEYS.LEADERBOARD);
-    return scores ? JSON.parse(scores) : [];
+    await AsyncStorage.clear();
   } catch (e) {
-    return [];
+    console.error("Error clearing storage", e);
   }
 };
