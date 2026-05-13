@@ -29,18 +29,27 @@ export default function LeaderboardScreen({ navigation }) {
     try {
       setLoading(true);
       
-      // 1. Get local username
-      const name = await getUsername();
-      setCurrentUsername(name);
+      // 1. Get and Log Local Name
+      const rawName = await getUsername();
+      // const rawName = "Sum";
+      const cleanName = rawName ? rawName.trim() : null;
+      setCurrentUsername(cleanName);
+      
+      console.log("DEBUG: Local Username found is:", `"${cleanName}"`);
 
-      // 2. Fetch Global Leaderboard
+      // 2. Fetch Leaderboard
       const data = await fetchLeaderboard('4x4');
       setLeaderboard(data || []);
+      
+      if (data && data.length > 0) {
+        console.log("DEBUG: First name in DB is:", `"${data[0].username}"`);
+      }
 
-      // 3. Fetch specific user rank if name exists
-      if (name) {
-        const rankData = await fetchUserRank(name, '4x4');
+      // 3. Fetch specific user rank
+      if (cleanName) {
+        const rankData = await fetchUserRank(cleanName, '4x4');
         setUserRank(rankData);
+        console.log("DEBUG: User Rank Data:", rankData);
       }
     } catch (error) {
       console.error("Leaderboard Load Error:", error);
@@ -49,19 +58,46 @@ export default function LeaderboardScreen({ navigation }) {
     }
   };
 
+  // Helper to check if two names match regardless of case or spaces
+  const isMatch = (dbName) => {
+    if (!currentUsername || !dbName) return false;
+    return dbName.trim().toLowerCase() === currentUsername.toLowerCase();
+  };
+
+  const renderPodiumItem = (item, rank) => {
+    if (!item) return <View style={styles.podiumColumn} />;
+    const me = isMatch(item.username);
+    
+    return (
+      <View style={[styles.podiumColumn, rank === 1 ? styles.firstPlace : {}]}>
+        <View style={[styles.avatarContainer, me && styles.myAvatar]}>
+           <Text style={styles.podiumEmoji}>{rank === 1 ? '🥇' : rank === 2 ? '🥈' : '🥉'}</Text>
+        </View>
+        <Text style={[styles.podiumName, me && styles.myNameText]} numberOfLines={1}>
+          {item.username} {me ? "(You)" : ""}
+        </Text>
+        <View style={styles.podiumScoreBadge}>
+          <Text style={styles.podiumScoreText}>{item.score}</Text>
+        </View>
+        <View style={[styles.podiumStep, { height: rank === 1 ? 80 : rank === 2 ? 60 : 40 }]}>
+          <Text style={styles.stepNumber}>{rank}</Text>
+        </View>
+      </View>
+    );
+  };
+
   const renderItem = ({ item, index }) => {
-    const isMe = currentUsername && item.username === currentUsername;
+    if (index < 3) return null;
+    const me = isMatch(item.username);
     const rank = index + 1;
 
     return (
-      <View style={[styles.row, isMe && styles.myRow]}>
+      <View style={[styles.row, me && styles.myRow]}>
         <View style={styles.rankContainer}>
-          <Text style={styles.rankText}>
-            {rank === 1 ? '👑1' : rank === 2 ? '👑2' : rank === 3 ? '👑3' : rank}
-          </Text>
+          <Text style={styles.rankText}>{rank}</Text>
         </View>
-        <Text style={[styles.nameText, isMe && styles.myNameText]} numberOfLines={1}>
-          {item.username} {isMe ? "(You)" : ""}
+        <Text style={[styles.nameText, me && styles.myNameText]} numberOfLines={1}>
+          {item.username} {me ? "(You)" : ""}
         </Text>
         <Text style={styles.scoreText}>{item.score}</Text>
       </View>
@@ -70,8 +106,7 @@ export default function LeaderboardScreen({ navigation }) {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={styles.container}>
-        {/* Header */}
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="close" size={30} color="#776e65" />
@@ -83,10 +118,7 @@ export default function LeaderboardScreen({ navigation }) {
         </View>
 
         {loading ? (
-          <View style={styles.center}>
-            <ActivityIndicator size="large" color="#8f7a66" />
-            <Text style={styles.loadingText}>Loading Scores...</Text>
-          </View>
+          <View style={styles.center}><ActivityIndicator size="large" color="#8f7a66" /></View>
         ) : (
           <View style={{ flex: 1 }}>
             <FlatList
@@ -94,12 +126,17 @@ export default function LeaderboardScreen({ navigation }) {
               renderItem={renderItem}
               keyExtractor={(item, index) => `rank-${index}`}
               contentContainerStyle={styles.listContent}
-              ListEmptyComponent={
-                <Text style={styles.emptyText}>No scores yet. Be the first!</Text>
-              }
+              ListHeaderComponent={() => (
+                <View style={styles.podiumContainer}>
+                  {renderPodiumItem(leaderboard[1], 2)}
+                  {renderPodiumItem(leaderboard[0], 1)}
+                  {renderPodiumItem(leaderboard[2], 3)}
+                </View>
+              )}
             />
             
-            {userRank && (
+            {/* Show footer if rank > 10 OR if you aren't in the top 10 names list */}
+            {userRank && (userRank.rank > 10) && (
               <View style={styles.stickyFooter}>
                 <View style={[styles.row, styles.myStickyRow]}>
                   <View style={styles.rankContainer}>
@@ -121,58 +158,31 @@ export default function LeaderboardScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#faf8ef' },
-  header: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee4da'
-  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10 },
   headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#776e65' },
-  backButton: { padding: 5 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { marginTop: 10, color: '#776e65', fontWeight: '500' },
-  listContent: { paddingHorizontal: 20, paddingTop: 15, paddingBottom: 120 },
-  row: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#eee4da', 
-    padding: 15, 
-    borderRadius: 10, 
-    marginBottom: 10 
-  },
-  myRow: {
-    backgroundColor: '#ede0c8',
-    borderWidth: 2,
-    borderColor: '#8f7a66'
-  },
-  rankContainer: { width: 55 },
-  rankText: { fontSize: 18, fontWeight: 'bold', color: '#776e65' },
-  rankTextWhite: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-  nameText: { flex: 1, fontSize: 17, color: '#776e65', fontWeight: '600' },
-  nameTextWhite: { flex: 1, fontSize: 17, color: '#fff', fontWeight: 'bold' },
-  myNameText: { color: '#8f7a66' },
-  scoreText: { fontSize: 18, fontWeight: 'bold', color: '#776e65' },
-  scoreTextWhite: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-  emptyText: { textAlign: 'center', marginTop: 50, color: '#776e65' },
-  stickyFooter: {
-    position: 'absolute',
-    bottom: 0,
-    width: '100%',
-    backgroundColor: '#faf8ef',
-    padding: 15,
-    borderTopWidth: 2,
-    borderTopColor: '#bbada0'
-  },
-  myStickyRow: {
-    backgroundColor: '#8f7a66',
-    marginBottom: 0,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-  }
+  listContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 150 },
+  podiumContainer: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', marginVertical: 20, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#eee4da' },
+  podiumColumn: { alignItems: 'center', width: width * 0.28 },
+  firstPlace: { transform: [{ translateY: -15 }] },
+  avatarContainer: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#eee4da', justifyContent: 'center', alignItems: 'center', marginBottom: 5, borderWidth: 2, borderColor: '#bbada0' },
+  myAvatar: { borderColor: '#8f7a66', borderWidth: 3 },
+  podiumEmoji: { fontSize: 30 },
+  podiumName: { fontSize: 13, fontWeight: 'bold', color: '#776e65', marginBottom: 5 },
+  podiumScoreBadge: { backgroundColor: '#8f7a66', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 12, marginBottom: 10 },
+  podiumScoreText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  podiumStep: { width: '90%', backgroundColor: '#bbada0', borderTopLeftRadius: 8, borderTopRightRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  stepNumber: { fontSize: 22, fontWeight: 'bold', color: 'rgba(255,255,255,0.5)' },
+  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#eee4da', padding: 15, borderRadius: 10, marginBottom: 10 },
+  myRow: { backgroundColor: '#ede0c8', borderWidth: 2, borderColor: '#8f7a66' },
+  rankContainer: { width: 45 },
+  rankText: { fontSize: 16, fontWeight: 'bold', color: '#776e65' },
+  rankTextWhite: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
+  nameText: { flex: 1, fontSize: 16, color: '#776e65', fontWeight: '600' },
+  nameTextWhite: { flex: 1, fontSize: 16, color: '#fff', fontWeight: 'bold' },
+  myNameText: { color: '#8f7a66', fontWeight: 'bold' },
+  scoreText: { fontSize: 16, fontWeight: 'bold', color: '#776e65' },
+  scoreTextWhite: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
+  stickyFooter: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: '#faf8ef', padding: 20, borderTopWidth: 2, borderTopColor: '#bbada0' },
+  myStickyRow: { backgroundColor: '#8f7a66', marginBottom: 0, elevation: 5 }
 });

@@ -8,15 +8,19 @@ import {
   Modal, 
   Dimensions 
 } from 'react-native';
+import { saveUsername } from '../utils/storage'; // ADD THIS LINE
 
 const { width } = Dimensions.get('window');
 
 export default function UsernameModal({ visible, onSave }) {
   const [name, setName] = useState('');
 
-  const handleSave = () => {
+  const handleSave = async () => { // ADD async
     if (name.trim().length > 2) {
-      onSave(name.trim());
+      const trimmedName = name.trim();
+      await saveUsername(trimmedName); // SAVE TO LOCAL STORAGE
+      onSave(trimmedName); // SEND TO FIREBASE
+      setName(''); // RESET FOR NEXT TIME
     }
   };
 
@@ -49,6 +53,8 @@ export default function UsernameModal({ visible, onSave }) {
     </Modal>
   );
 }
+
+// ... styles remain exactly the same
 
 const styles = StyleSheet.create({
   overlay: {
