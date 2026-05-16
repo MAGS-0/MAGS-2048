@@ -1,54 +1,58 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Alert } from 'react-native';
-
-// We try to import the real ads, but catch the error if we are in Expo Go
-let InterstitialAd, AdEventType, TestIds;
-try {
-  const AdModule = require('react-native-google-mobile-ads');
-  InterstitialAd = AdModule.InterstitialAd;
-  AdEventType = AdModule.AdEventType;
-  TestIds = AdModule.TestIds;
-} catch (e) {
-  console.log("Running in Expo Go: Native Ad Module not available.");
-}
 
 const AdContext = createContext();
 
+let InterstitialAd = null;
+let AdEventType = null;
+let TestIds = null;
+
+try {
+  const Ads = require('react-native-google-mobile-ads');
+  InterstitialAd = Ads.InterstitialAd;
+  AdEventType = Ads.AdEventType;
+  TestIds = Ads.TestIds;
+} catch (e) {
+  console.log("Ads library not accessible in current bundler mode.");
+}
+
 export const AdProvider = ({ children }) => {
-  const [adLoaded, setAdLoaded] = useState(false);
   const [interstitial, setInterstitial] = useState(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    // Only try to load if the module exists
-    if (InterstitialAd) {
-      const adUnitId = TestIds.INTERSTITIAL;
-      const newAd = InterstitialAd.createForAdRequest(adUnitId, {
-        requestNonPersonalizedAdsOnly: true,
+    if (InterstitialAd && TestIds) {
+      // Uses standard Google Test ID to prevent build bans or failures
+      const adInstance = InterstitialAd.createForAdRequest(TestIds.INTERSTITIAL);
+      
+      const unsubscribeLoaded = adInstance.addAdEventListener(AdEventType.LOADED, () => {
+        setLoaded(true);
       });
 
-      newAd.addAdEventListener(AdEventType.LOADED, () => setAdLoaded(true));
-      newAd.addAdEventListener(AdEventType.CLOSED, () => {
-        setAdLoaded(false);
-        newAd.load(); 
+      const unsubscribeClosed = adInstance.addAdEventListener(AdEventType.CLOSED, () => {
+        setLoaded(false);
+        adInstance.load(); // Preload next ad
       });
 
-      newAd.load();
-      setInterstitial(newAd);
+      adInstance.load();
+      setInterstitial(adInstance);
+
+      return () => {
+        unsubscribeLoaded();
+        unsubscribeClosed();
+      };
     }
   }, []);
 
   const showInterstitial = () => {
-    if (InterstitialAd && adLoaded && interstitial) {
+    if (loaded && interstitial) {
       interstitial.show();
     } else {
-      // In Expo Go, we show a simple alert instead of a crash
-      console.log('Ad Triggered (Development Mode)');
-      // Optional: Alert.alert("Ad Simulation", "An interstitial ad would show here in the final build.");
+      console.log("Ad note loaded or running in an unsupported Expo Go environment.");
     }
   };
 
   return (
-    <AdContext.Provider value={{ showInterstitial, adLoaded }}>
+    <AdContext.Provider value={{ showInterstitial }}>
       {children}
     </AdContext.Provider>
   );
