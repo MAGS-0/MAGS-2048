@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Dimensions } from 'react-native';
-import { getUsername } from '../utils/storage';
+import { getUsername, saveUsername } from '../utils/storage';
 import { useAds } from '../context/AdContext';
 
 const { width } = Dimensions.get('window');
@@ -9,22 +9,20 @@ export default function HomeScreen({ navigation }) {
   const { showInterstitial } = useAds();
   const [currentUser, setCurrentUser] = useState(null);
 
-useEffect(() => {
-  const setupName = async () => {
-    await saveUsername('Sum'); // This saves 'Sum' to your phone's memory
-  };
-  setupName();
-}, []);
+  useEffect(() => {
+    const initializeUser = async () => {
+      // Safely ensure local storage matches your database profile name
+      await saveUsername('Sum');
+      const name = await getUsername();
+      setCurrentUser(name);
+    };
 
-  // useEffect(() => {
-  //   const fetchUser = async () => {
-  //     const name = await getUsername();
-  //     setCurrentUser(name);
-  //   };
-  //   // Re-check whenever the screen comes into focus
-  //   const unsubscribe = navigation.addListener('focus', fetchUser);
-  //   return unsubscribe;
-  // }, [navigation]);
+    initializeUser();
+
+    // Refresh username text whenever you navigate back to the Home Screen
+    const unsubscribe = navigation.addListener('focus', initializeUser);
+    return unsubscribe;
+  }, [navigation]);
 
   const handlePlayPress = () => {
     showInterstitial();
@@ -79,22 +77,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#8f7a66', 
     paddingHorizontal: 40, 
     paddingVertical: 15, 
-    borderRadius: 5, 
-    width: width * 0.7, 
+    borderRadius: 5,
+    width: width * 0.7,
     alignItems: 'center',
-    marginBottom: 20 
+    marginBottom: 15
   },
   buttonText: { 
     color: '#ffffff', 
-    fontSize: 20, 
-    fontWeight: 'bold' 
-  },
-  secondaryButton: { 
-    backgroundColor: '#bbada0' 
-  },
-  secondaryButtonText: { 
-    color: '#ffffff', 
     fontSize: 18, 
     fontWeight: 'bold' 
+  },
+  secondaryButton: {
+    backgroundColor: '#bbada0',
+  },
+  secondaryButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: 'bold'
   }
 });
