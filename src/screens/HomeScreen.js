@@ -9,15 +9,22 @@ export default function HomeScreen({ navigation }) {
   const { showInterstitial } = useAds();
   const [currentUser, setCurrentUser] = useState(null);
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      const name = await getUsername();
-      setCurrentUser(name);
-    };
-    // Re-check whenever the screen comes into focus
-    const unsubscribe = navigation.addListener('focus', fetchUser);
-    return unsubscribe;
-  }, [navigation]);
+useEffect(() => {
+  const setupName = async () => {
+    await saveUsername('Sum'); // This saves 'Sum' to your phone's memory
+  };
+  setupName();
+}, []);
+
+  // useEffect(() => {
+  //   const fetchUser = async () => {
+  //     const name = await getUsername();
+  //     setCurrentUser(name);
+  //   };
+  //   // Re-check whenever the screen comes into focus
+  //   const unsubscribe = navigation.addListener('focus', fetchUser);
+  //   return unsubscribe;
+  // }, [navigation]);
 
   const handlePlayPress = () => {
     showInterstitial();
