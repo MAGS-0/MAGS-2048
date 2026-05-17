@@ -22,6 +22,9 @@ export default function GameScreen({ navigation }) {
   const [mergedCoords, setMergedCoords] = useState([]);
   const [showConfetti, setShowConfetti] = useState(false);
 
+  // --- NEW STATES FOR DELETE POWER-UP ---
+  const [isDeleteMode, setIsDeleteMode] = useState(false);
+
   const scoreBounce = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -51,27 +54,25 @@ export default function GameScreen({ navigation }) {
     await saveUsername(name);
     setUsername(name);
     setShowNameModal(false);
-    // After saving name, submit the score that triggered the modal
     await submitGlobalScore(name, score, '4x4');
   };
 
   const resetGame = () => {
-    Alert.alert("New Game", "Are you sure you want to start a new game?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Yes", onPress: () => {
-          setNewTileCoord(null);
-          setMergedCoords([]);
-          setShowConfetti(false);
-          const newGrid = initializeGrid();
-          setGrid(newGrid);
-          setScore(0);
-          setHistory([]);
-          saveGameState(newGrid, 0);
-      }}
-    ]);
+    setNewTileCoord(null);
+    setMergedCoords([]);
+    setShowConfetti(false);
+    setIsDeleteMode(false);
+    const newGrid = initializeGrid();
+    setGrid(newGrid);
+    setScore(0);
+    setHistory([]);
+    saveGameState(newGrid, 0);
   };
 
   const handleMove = async (direction) => {
+    // If player is in delete mode, block normal board swipes until they choose a tile or cancel
+    if (isDeleteMode) return;
+
     const oldGrid = JSON.parse(JSON.stringify(grid));
     const result = moveGrid(grid, direction);
     
@@ -117,7 +118,6 @@ export default function GameScreen({ navigation }) {
       }
 
       if (isGameOver(nextGrid)) {
-        // Handle global submission logic
         if (username) {
           await submitGlobalScore(username, nextScore, '4x4');
         } else {
@@ -126,13 +126,7 @@ export default function GameScreen({ navigation }) {
 
         Alert.alert("Game Over", `Your final score is ${nextScore}`, [
           { text: "Return Home", onPress: () => navigation.navigate('Home') },
-          { text: "Try Again", onPress: () => {
-              const newGrid = initializeGrid();
-              setGrid(newGrid);
-              setScore(0);
-              setHistory([]);
-              saveGameState(newGrid, 0);
-          }} 
+          { text: "Try Again", onPress: () => resetGame() } 
         ]);
       }
     }
@@ -143,11 +137,44 @@ export default function GameScreen({ navigation }) {
       const previousState = history[history.length - 1];
       setNewTileCoord(null);
       setMergedCoords([]);
+      setIsDeleteMode(false);
       setGrid(previousState.grid);
       setScore(previousState.score);
       setHistory(prev => prev.slice(0, -1));
       saveGameState(previousState.grid, previousState.score);
     }
+  };
+
+  // --- NEW DELETE TILE SELECTION FUNCTION ---
+  const handleTileSelect = (r, c) => {
+    if (!isDeleteMode) return;
+
+    // 1. Check if target tile actually has a number
+    if (grid[r][c] === 0) return;
+
+    // 2. Count total tiles left on the board
+    let activeTileCount = 0;
+    grid.forEach(row => row.forEach(cell => { if (cell !== 0) activeTileCount++; }));
+
+    if (activeTileCount <= 1) {
+      Alert.alert("Action Blocked", "You cannot delete a tile if it is the only one remaining on the board!");
+      setIsDeleteMode(false);
+      return;
+    }
+
+    // 3. Save the history state BEFORE making the delete modification
+    const oldGrid = JSON.parse(JSON.stringify(grid));
+    setHistory(prev => [...prev, { grid: oldGrid, score }]);
+
+    // 4. Modify and save state
+    const nextGrid = grid.map(row => [...row]);
+    nextGrid[r][c] = 0; // Vaporize target tile
+
+    setNewTileCoord(null);
+    setMergedCoords([]);
+    setGrid(nextGrid);
+    setIsDeleteMode(false); // turn off power-up selection mode
+    saveGameState(nextGrid, score);
   };
 
   const panResponder = PanResponder.create({
@@ -166,12 +193,11 @@ export default function GameScreen({ navigation }) {
 
   return (
     <View style={styles.container} {...panResponder.panHandlers}>
+      {/* HEADER SECTION */}
       <View style={styles.header}>
         <View style={styles.titleContainer}>
           <Text style={styles.title}>2048</Text>
-          <TouchableOpacity style={styles.resetButton} onPress={resetGame}>
-            <Text style={styles.resetButtonText}>NEW GAME</Text>
-          </TouchableOpacity>
+          <Text style={styles.subtitle}>Join tiles to win!</Text>
         </View>
         <View style={styles.scoreBoard}>
           <Animated.View style={[styles.scoreContainer, { transform: [{ scale: scoreBounce }] }]}>
@@ -185,15 +211,14 @@ export default function GameScreen({ navigation }) {
         </View>
       </View>
 
-      <View style={styles.controls}>
-        <TouchableOpacity style={styles.undoButton} onPress={handleUndo}>
-          <Text style={styles.undoButtonText}>UNDO</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.homeButton} onPress={() => navigation.navigate('Home')}>
-          <Text style={styles.undoButtonText}>HOME</Text>
-        </TouchableOpacity>
+      {/* TOP HEADER AD BAR PLACEHOLDER */}
+      <View style={styles.adBanner}>
+        <Text style={styles.adTag}>Ad</Text>
+        <Text style={styles.adBannerText}>Remove Ads — $2.99</Text>
+        <TouchableOpacity style={styles.adCloseBtn}><Text style={styles.adCloseText}>×</Text></TouchableOpacity>
       </View>
-      
+
+      {/* COMPACT BOARD MATRIX LAYER */}
       <View style={styles.grid}>
         <View style={styles.backgroundGrid}>
           {Array(16).fill(null).map((_, i) => (
@@ -202,8 +227,12 @@ export default function GameScreen({ navigation }) {
         </View>
         <View style={styles.tileContainer}>
           {grid.map((row, r) => row.map((cell, c) => (
-            cell !== 0 && (
-              <View key={`tile-${r}-${c}`} style={{ 
+            <TouchableOpacity 
+              key={`tile-trigger-${r}-${c}`}
+              activeOpacity={isDeleteMode ? 0.5 : 1}
+              onPress={() => handleTileSelect(r, c)}
+              disabled={!isDeleteMode}
+              style={{ 
                 position: 'absolute', 
                 left: c * CELL_SIZE, 
                 top: r * CELL_SIZE,
@@ -211,18 +240,67 @@ export default function GameScreen({ navigation }) {
                 height: CELL_SIZE,
                 justifyContent: 'center',
                 alignItems: 'center'
-              }}>
+              }}
+            >
+              {cell !== 0 && (
                 <Tile 
                   value={cell} 
                   cellSize={CELL_SIZE} 
                   isNew={newTileCoord === `${r}-${c}`} 
                   isMerged={mergedCoords.includes(`${r}-${c}`)}
                 />
-              </View>
-            )
+              )}
+            </TouchableOpacity>
           )))}
         </View>
       </View>
+
+      {/* BRAND NEW BOTTOM MOCKUP INTERFACE GRID */}
+      <View style={styles.powerUpsWrapper}>
+        <Text style={styles.powerUpsTitle}>POWER-UPS</Text>
+        
+        {/* ROW 1: UNDO & DELETE */}
+        <View style={styles.powerUpRow}>
+          <TouchableOpacity 
+            style={[styles.powerUpBtn, styles.undoBtn, history.length === 0 && styles.disabledBtn]} 
+            onPress={handleUndo}
+            disabled={history.length === 0}
+          >
+            <Text style={styles.powerUpBtnText}>↩ Undo  <Text style={styles.badge}>3</Text></Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.powerUpBtn, styles.deleteBtn, isDeleteMode && styles.activeDeleteBtn]} 
+            onPress={() => setIsDeleteMode(!isDeleteMode)}
+          >
+            <Text style={styles.powerUpBtnText}>
+              {isDeleteMode ? "📭 Select Tile..." : "✕ Delete Tile  "}
+              {!isDeleteMode && <Text style={styles.badge}>2</Text>}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ROW 2: EXTRA LIFE & BUY MORE */}
+        <View style={styles.powerUpRow}>
+          <TouchableOpacity style={[styles.powerUpBtn, styles.extraLifeBtn]}>
+            <Text style={styles.powerUpBtnText}>🧡 Extra Life  <Text style={styles.badge}>1</Text></Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.powerUpBtn, styles.buyMoreBtn]}>
+            <Text style={styles.powerUpBtnText}>+ Buy More</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ROW 3: NEW GAME & WATCH AD */}
+        <View style={styles.powerUpRow}>
+          <TouchableOpacity style={[styles.powerUpBtn, styles.newGameBtn]} onPress={resetGame}>
+            <Text style={styles.powerUpBtnText}>New Game</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.powerUpBtn, styles.watchAdBtn]}>
+            <Text style={styles.watchAdBtnText}>Watch Ad → Free Undo</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <Confetti active={showConfetti} />
       <UsernameModal visible={showNameModal} onSave={handleNameSave} />
     </View>
@@ -230,22 +308,45 @@ export default function GameScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#faf8ef', alignItems: 'center', justifyContent: 'center' },
-  header: { flexDirection: 'row', marginBottom: 10, width: width - 40, justifyContent: 'space-between', alignItems: 'center' },
+  container: { flex: 1, backgroundColor: '#faf8ef', alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
+  header: { flexDirection: 'row', width: width - 40, justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   titleContainer: { alignItems: 'flex-start' },
-  title: { fontSize: 36, fontWeight: 'bold', color: '#776e65' },
-  resetButton: { backgroundColor: '#8f7a66', padding: 8, borderRadius: 5, marginTop: 5 },
-  resetButtonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 12 },
+  title: { fontSize: 36, fontWeight: 'bold', color: '#776e65', lineHeight: 38 },
+  subtitle: { color: '#776e65', fontSize: 13, fontWeight: '500', opacity: 0.8 },
   scoreBoard: { flexDirection: 'row' },
-  scoreContainer: { backgroundColor: '#bbada0', padding: 10, borderRadius: 5, alignItems: 'center', minWidth: 70, marginLeft: 5 },
+  scoreContainer: { backgroundColor: '#bbada0', padding: 8, borderRadius: 5, alignItems: 'center', minWidth: 72, marginLeft: 6 },
   scoreLabel: { color: '#eee4da', fontSize: 10, fontWeight: 'bold' },
   scoreValue: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' },
-  controls: { flexDirection: 'row', marginBottom: 20, width: width - 40, justifyContent: 'space-between' },
-  undoButton: { backgroundColor: '#8f7a66', padding: 10, borderRadius: 5, width: '45%', alignItems: 'center' },
-  homeButton: { backgroundColor: '#bbada0', padding: 10, borderRadius: 5, width: '45%', alignItems: 'center' },
-  undoButtonText: { color: '#ffffff', fontWeight: 'bold' },
-  grid: { width: width - 20, height: width - 20, backgroundColor: '#bbada0', borderRadius: 6, position: 'relative', overflow: 'hidden' },
+  
+  // Ad Mockup Layout
+  adBanner: { flexDirection: 'row', backgroundColor: '#7c5bc4', width: width - 40, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'space-between', marginVertical: 12 },
+  adTag: { backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff', fontSize: 10, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, fontWeight: 'bold' },
+  adBannerText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
+  adCloseBtn: { paddingHorizontal: 4 },
+  adCloseText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold', opacity: 0.7 },
+
+  grid: { width: width - 40, height: width - 40, backgroundColor: '#bbada0', borderRadius: 6, position: 'relative', overflow: 'hidden' },
   backgroundGrid: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', flexWrap: 'wrap', padding: 5 },
   tileContainer: { ...StyleSheet.absoluteFillObject, padding: 5 },
-  cellPlaceholder: { width: CELL_SIZE - 10, height: CELL_SIZE - 10, margin: 5, borderRadius: 5, backgroundColor: 'rgba(238, 228, 218, 0.35)' },
+  cellPlaceholder: { width: (width - 50) / 4 - 10, height: (width - 50) / 4 - 10, margin: 5, borderRadius: 5, backgroundColor: 'rgba(238, 228, 218, 0.35)' },
+
+  // Power Ups Layout Wrapper
+  powerUpsWrapper: { width: width - 40, marginTop: 15 },
+  powerUpsTitle: { fontSize: 11, fontWeight: 'bold', color: '#bbada0', marginBottom: 6, letterSpacing: 0.5 },
+  powerUpRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  powerUpBtn: { paddingVertical: 12, borderRadius: 6, width: '48.5%', alignItems: 'center', justifyContent: 'center' },
+  powerUpBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
+  badge: { backgroundColor: 'rgba(0,0,0,0.15)', fontSize: 11, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10, overflow: 'hidden' },
+  
+  // Custom Element Background Profiles
+  undoBtn: { backgroundColor: '#f9945c' },
+  deleteBtn: { backgroundColor: '#ff6b54' },
+  activeDeleteBtn: { backgroundColor: '#c43d27', borderItem: 'dashed' },
+  extraLifeBtn: { backgroundColor: '#f7b274' },
+  buyMoreBtn: { backgroundColor: '#9c8370' },
+  newGameBtn: { backgroundColor: '#947e6e' },
+  watchAdBtn: { backgroundColor: '#242526' },
+  watchAdText: { color: '#ffffff', fontWeight: 'bold' },
+  watchAdBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 13 },
+  disabledBtn: { opacity: 0.4 }
 });
