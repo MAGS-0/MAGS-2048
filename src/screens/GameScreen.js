@@ -7,6 +7,20 @@ import Tile from '../components/Tile';
 import Confetti from '../components/Confetti';
 import UsernameModal from '../components/UsernameModal';
 
+// Safely display mock fallback layout if AdMob isn't natively bound
+const BannerAdMock = ({ onFailed }) => (
+  <View style={styles.adBanner}>
+    <Text style={styles.adTag}>Ad Mock</Text>
+    <Text style={styles.adBannerText}>Remove Ads — $2.99</Text>
+    <TouchableOpacity style={styles.adCloseBtn} onPress={onFailed}>
+      <Text style={styles.adCloseText}>×</Text>
+    </TouchableOpacity>
+  </View>
+);
+
+// Import our new wrapper utility to prevent 'undefined' crashes
+import { logGameEvent } from '../utils/analytics';
+
 const { width } = Dimensions.get('window');
 const CELL_SIZE = (width - 40) / 4;
 
@@ -45,6 +59,12 @@ export default function GameScreen({ navigation }) {
       
       const storedName = await getUsername();
       setUsername(storedName);
+
+      // Log layout view safely
+      logGameEvent('screen_view', {
+        screen_name: 'GameScreen',
+        purpose: 'active_gameplay'
+      });
     };
     init();
   }, []);
@@ -64,6 +84,12 @@ export default function GameScreen({ navigation }) {
   };
 
   const resetGame = () => {
+    // Log tracking parameter data metrics safely
+    logGameEvent('game_restart', {
+      current_score_at_reset: score,
+      moves_made_before_reset: history.length
+    });
+
     setNewTileCoord(null);
     setMergedCoords([]);
     setShowConfetti(false);
@@ -90,6 +116,7 @@ export default function GameScreen({ navigation }) {
       let newCoord = null;
       let merges = [];
       let milestoneReached = false;
+      let topMergedValue = 0;
 
       nextGrid.forEach((row, r) => {
         row.forEach((cell, c) => {
@@ -98,10 +125,20 @@ export default function GameScreen({ navigation }) {
           }
           if (nextGrid[r][c] > oldGrid[r][c] && oldGrid[r][c] !== 0) {
               merges.push(`${r}-${c}`);
+              if (nextGrid[r][c] > topMergedValue) {
+                topMergedValue = nextGrid[r][c];
+              }
               if (nextGrid[r][c] >= 512) milestoneReached = true;
           }
         });
       });
+
+      if (topMergedValue >= 128) {
+        logGameEvent('score_milestone', {
+          tile_value: topMergedValue,
+          current_total_score: nextScore
+        });
+      }
 
       if (milestoneReached) {
         setShowConfetti(false);
@@ -123,6 +160,12 @@ export default function GameScreen({ navigation }) {
       }
 
       if (isGameOver(nextGrid)) {
+        logGameEvent('game_over', {
+          final_score: nextScore,
+          highest_score_record: Math.max(nextScore, highScore),
+          total_moves_played: history.length + 1
+        });
+
         if (username) {
           await submitGlobalScore(username, nextScore, '4x4');
         } else {
@@ -139,6 +182,11 @@ export default function GameScreen({ navigation }) {
 
   const handleUndo = () => {
     if (history.length > 0) {
+      logGameEvent('powerup_used', {
+        type: 'undo_move',
+        score_at_time_of_use: score
+      });
+
       const previousState = history[history.length - 1];
       setNewTileCoord(null);
       setMergedCoords([]);
@@ -162,6 +210,12 @@ export default function GameScreen({ navigation }) {
       setIsDeleteMode(false);
       return;
     }
+
+    logGameEvent('powerup_used', {
+      type: 'delete_tile',
+      deleted_tile_value: grid[r][c],
+      score_at_time_of_use: score
+    });
 
     const oldGrid = JSON.parse(JSON.stringify(grid));
     setHistory(prev => [...prev, { grid: oldGrid, score }]);
@@ -213,13 +267,7 @@ export default function GameScreen({ navigation }) {
       {/* AD CONTAINER SECTION */}
       <View style={styles.adWrapper}>
         {showAd && (
-          <View style={styles.adBanner}>
-            <Text style={styles.adTag}>Ad Mock</Text>
-            <Text style={styles.adBannerText}>Remove Ads — $2.99</Text>
-            <TouchableOpacity style={styles.adCloseBtn} onPress={() => setShowAd(false)}>
-              <Text style={styles.adCloseText}>×</Text>
-            </TouchableOpacity>
-          </View>
+          <BannerAdMock onFailed={() => setShowAd(false)} />
         )}
       </View>
 

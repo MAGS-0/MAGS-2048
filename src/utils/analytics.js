@@ -1,0 +1,23 @@
+import { Platform } from 'react-native';
+
+// Safely require the package only if available
+let FirebaseAnalytics = null;
+try {
+  FirebaseAnalytics = require('expo-firebase-analytics').default;
+} catch (e) {
+  // Gracefully fail silently if the module is completely unlinked
+}
+
+export const logGameEvent = async (eventName, params = {}) => {
+  try {
+    // Check if we are running in a real standalone native environment with Firebase linked
+    if (FirebaseAnalytics && typeof FirebaseAnalytics.logEvent === 'function') {
+      await FirebaseAnalytics.logEvent(eventName, params);
+    } else {
+      // Fallback: Log beautifully to your terminal during development in Expo Go
+      console.log(`[📊 ANALYTICS MOCK] Event: "${eventName}"`, JSON.stringify(params));
+    }
+  } catch (error) {
+    console.warn('[📊 ANALYTICS ERROR] Failed to log event:', error);
+  }
+};
