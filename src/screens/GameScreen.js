@@ -22,6 +22,9 @@ export default function GameScreen({ navigation }) {
   const [mergedCoords, setMergedCoords] = useState([]);
   const [showConfetti, setShowConfetti] = useState(false);
 
+  // --- STATES FOR SETTINGS INTERFACE ---
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
   // --- NEW STATES FOR DELETE POWER-UP ---
   const [isDeleteMode, setIsDeleteMode] = useState(false);
 
@@ -145,7 +148,7 @@ export default function GameScreen({ navigation }) {
     }
   };
 
-  // --- NEW DELETE TILE SELECTION FUNCTION ---
+  // --- DELETE TILE SELECTION FUNCTION ---
   const handleTileSelect = (r, c) => {
     if (!isDeleteMode) return;
 
@@ -255,7 +258,7 @@ export default function GameScreen({ navigation }) {
         </View>
       </View>
 
-{/* UPDATED BOTTOM INTERFACE GRID */}
+      {/* UPDATED BOTTOM INTERFACE GRID */}
       <View style={styles.powerUpsWrapper}>
         <Text style={styles.powerUpsTitle}>POWER-UPS</Text>
         
@@ -266,7 +269,6 @@ export default function GameScreen({ navigation }) {
             onPress={handleUndo}
             disabled={history.length === 0}
           >
-            {/* Added a conditional text style for when Undo is disabled */}
             <Text style={[styles.powerUpBtnText, history.length === 0 && styles.disabledBtnText]}>
               ↩ Undo  <Text style={styles.badge}>3</Text>
             </Text>
@@ -283,12 +285,11 @@ export default function GameScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-{/* ROW 2: NEW GAME & SETTINGS */}
+        {/* ROW 2: RESTART & SETTINGS */}
         <View style={styles.powerUpRow}>
           <TouchableOpacity 
             style={[styles.powerUpBtn, styles.homeBtn]} 
             onPress={() => {
-              // Trigger a safety verification alert before clearing board history
               Alert.alert(
                 "Start New Game?",
                 "Are you sure you want to end this game? Your current progress will be lost.",
@@ -304,14 +305,47 @@ export default function GameScreen({ navigation }) {
           
           <TouchableOpacity 
             style={[styles.powerUpBtn, styles.settingsBtn]}
-            onPress={() => {
-              Alert.alert("Settings", "Settings logic placeholder");
-            }}
+            onPress={() => setShowSettingsModal(true)}
           >
             <Text style={styles.powerUpBtnText}>⚙️ Settings</Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* SETTINGS OVERLAY MODAL */}
+      {showSettingsModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.settingsCard}>
+            <Text style={styles.settingsTitle}>Settings</Text>
+            
+            {/* TOGGLE 1: SOUND */}
+            <View style={styles.settingRow}>
+              <Text style={styles.settingLabel}>Sound Effects</Text>
+              <TouchableOpacity style={styles.toggleActive} onPress={() => Alert.alert("Sound Toggle", "Functionality coming soon!")}>
+                <Text style={styles.toggleText}>ON</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* TOGGLE 2: HAPTICS */}
+            <View style={styles.settingRow}>
+              <Text style={styles.settingLabel}>Haptic Feedback</Text>
+              <TouchableOpacity style={styles.toggleActive} onPress={() => Alert.alert("Haptics Toggle", "Functionality coming soon!")}>
+                <Text style={styles.toggleText}>ON</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* BUTTON 3: TUTORIAL LINK */}
+            <TouchableOpacity style={styles.menuItemBtn} onPress={() => Alert.alert("How to Play", "Slide matching number blocks into each other to add them up and reach the 2048 tile!")}>
+              <Text style={styles.menuItemText}>📖 How to Play Tutorial</Text>
+            </TouchableOpacity>
+
+            {/* CLOSE MODAL BUTTON */}
+            <TouchableOpacity style={styles.closeSettingsBtn} onPress={() => setShowSettingsModal(false)}>
+              <Text style={styles.closeSettingsText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <Confetti active={showConfetti} />
       <UsernameModal visible={showNameModal} onSave={handleNameSave} />
@@ -350,14 +384,27 @@ const styles = StyleSheet.create({
   powerUpBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
   badge: { backgroundColor: 'rgba(0,0,0,0.15)', fontSize: 11, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10, overflow: 'hidden' },
   
-// Color profiles matching your clean UI
+  // Color profiles matching your clean UI
   undoBtn: { backgroundColor: '#f9945c' },
   deleteBtn: { backgroundColor: '#ff6b54' },
   activeDeleteBtn: { backgroundColor: '#c43d27' },
   homeBtn: { backgroundColor: '#8f7a66' }, 
   settingsBtn: { backgroundColor: '#bbada0' }, 
   
-  // Clean visibility fixes for disabled states
+  // Visibility fixes for disabled states
   disabledBtn: { backgroundColor: '#e4dbd2', opacity: 0.7 },
-  disabledBtnText: { color: '#a69a8f' }
+  disabledBtnText: { color: '#a69a8f' },
+
+  // Settings Overlay Modal Styles
+  modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.4)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
+  settingsCard: { width: width * 0.8, backgroundColor: '#faf8ef', padding: 24, borderRadius: 10, alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84 },
+  settingsTitle: { fontSize: 26, fontWeight: 'bold', color: '#776e65', marginBottom: 20 },
+  settingRow: { flexDirection: 'row', width: '100%', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee4da' },
+  settingLabel: { fontSize: 16, fontWeight: '600', color: '#776e65' },
+  toggleActive: { backgroundColor: '#8f7a66', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 4 },
+  toggleText: { color: '#ffffff', fontWeight: 'bold', fontSize: 13 },
+  menuItemBtn: { width: '100%', paddingVertical: 14, backgroundColor: '#bbada0', borderRadius: 6, alignItems: 'center', marginTop: 16 },
+  menuItemText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
+  closeSettingsBtn: { marginTop: 24, paddingVertical: 10, width: '100%', alignItems: 'center' },
+  closeSettingsText: { color: '#776e65', fontSize: 15, fontWeight: 'bold', opacity: 0.8 }
 });
