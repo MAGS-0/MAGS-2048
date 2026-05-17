@@ -255,18 +255,21 @@ export default function GameScreen({ navigation }) {
         </View>
       </View>
 
-      {/* BRAND NEW BOTTOM MOCKUP INTERFACE GRID */}
+{/* UPDATED BOTTOM INTERFACE GRID */}
       <View style={styles.powerUpsWrapper}>
         <Text style={styles.powerUpsTitle}>POWER-UPS</Text>
         
-        {/* ROW 1: UNDO & DELETE */}
+        {/* ROW 1: UNDO & DELETE TILE */}
         <View style={styles.powerUpRow}>
           <TouchableOpacity 
             style={[styles.powerUpBtn, styles.undoBtn, history.length === 0 && styles.disabledBtn]} 
             onPress={handleUndo}
             disabled={history.length === 0}
           >
-            <Text style={styles.powerUpBtnText}>↩ Undo  <Text style={styles.badge}>3</Text></Text>
+            {/* Added a conditional text style for when Undo is disabled */}
+            <Text style={[styles.powerUpBtnText, history.length === 0 && styles.disabledBtnText]}>
+              ↩ Undo  <Text style={styles.badge}>3</Text>
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -280,23 +283,32 @@ export default function GameScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* ROW 2: EXTRA LIFE & BUY MORE */}
+{/* ROW 2: NEW GAME & SETTINGS */}
         <View style={styles.powerUpRow}>
-          <TouchableOpacity style={[styles.powerUpBtn, styles.extraLifeBtn]}>
-            <Text style={styles.powerUpBtnText}>🧡 Extra Life  <Text style={styles.badge}>1</Text></Text>
+          <TouchableOpacity 
+            style={[styles.powerUpBtn, styles.homeBtn]} 
+            onPress={() => {
+              // Trigger a safety verification alert before clearing board history
+              Alert.alert(
+                "Start New Game?",
+                "Are you sure you want to end this game? Your current progress will be lost.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Start New", style: "destructive", onPress: () => resetGame() }
+                ]
+              );
+            }}
+          >
+            <Text style={styles.powerUpBtnText}>🔄Restart</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.powerUpBtn, styles.buyMoreBtn]}>
-            <Text style={styles.powerUpBtnText}>+ Buy More</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ROW 3: NEW GAME & WATCH AD */}
-        <View style={styles.powerUpRow}>
-          <TouchableOpacity style={[styles.powerUpBtn, styles.newGameBtn]} onPress={resetGame}>
-            <Text style={styles.powerUpBtnText}>New Game</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.powerUpBtn, styles.watchAdBtn]}>
-            <Text style={styles.watchAdBtnText}>Watch Ad → Free Undo</Text>
+          
+          <TouchableOpacity 
+            style={[styles.powerUpBtn, styles.settingsBtn]}
+            onPress={() => {
+              Alert.alert("Settings", "Settings logic placeholder");
+            }}
+          >
+            <Text style={styles.powerUpBtnText}>⚙️ Settings</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -331,22 +343,21 @@ const styles = StyleSheet.create({
   cellPlaceholder: { width: (width - 50) / 4 - 10, height: (width - 50) / 4 - 10, margin: 5, borderRadius: 5, backgroundColor: 'rgba(238, 228, 218, 0.35)' },
 
   // Power Ups Layout Wrapper
-  powerUpsWrapper: { width: width - 40, marginTop: 15 },
+  powerUpsWrapper: { width: width - 40, marginTop: 20 },
   powerUpsTitle: { fontSize: 11, fontWeight: 'bold', color: '#bbada0', marginBottom: 6, letterSpacing: 0.5 },
-  powerUpRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  powerUpBtn: { paddingVertical: 12, borderRadius: 6, width: '48.5%', alignItems: 'center', justifyContent: 'center' },
+  powerUpRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  powerUpBtn: { paddingVertical: 14, borderRadius: 6, width: '48.5%', alignItems: 'center', justifyContent: 'center' },
   powerUpBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
   badge: { backgroundColor: 'rgba(0,0,0,0.15)', fontSize: 11, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10, overflow: 'hidden' },
   
-  // Custom Element Background Profiles
+// Color profiles matching your clean UI
   undoBtn: { backgroundColor: '#f9945c' },
   deleteBtn: { backgroundColor: '#ff6b54' },
-  activeDeleteBtn: { backgroundColor: '#c43d27', borderItem: 'dashed' },
-  extraLifeBtn: { backgroundColor: '#f7b274' },
-  buyMoreBtn: { backgroundColor: '#9c8370' },
-  newGameBtn: { backgroundColor: '#947e6e' },
-  watchAdBtn: { backgroundColor: '#242526' },
-  watchAdText: { color: '#ffffff', fontWeight: 'bold' },
-  watchAdBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 13 },
-  disabledBtn: { opacity: 0.4 }
+  activeDeleteBtn: { backgroundColor: '#c43d27' },
+  homeBtn: { backgroundColor: '#8f7a66' }, 
+  settingsBtn: { backgroundColor: '#bbada0' }, 
+  
+  // Clean visibility fixes for disabled states
+  disabledBtn: { backgroundColor: '#e4dbd2', opacity: 0.7 },
+  disabledBtnText: { color: '#a69a8f' }
 });
