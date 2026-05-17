@@ -25,8 +25,11 @@ export default function GameScreen({ navigation }) {
   // --- STATES FOR SETTINGS INTERFACE ---
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
-  // --- NEW STATES FOR DELETE POWER-UP ---
+  // --- STATES FOR DELETE POWER-UP ---
   const [isDeleteMode, setIsDeleteMode] = useState(false);
+
+  // --- AD VISIBILITY TRACKER ---
+  const [showAd, setShowAd] = useState(true);
 
   const scoreBounce = useRef(new Animated.Value(1)).current;
 
@@ -73,7 +76,6 @@ export default function GameScreen({ navigation }) {
   };
 
   const handleMove = async (direction) => {
-    // If player is in delete mode, block normal board swipes until they choose a tile or cancel
     if (isDeleteMode) return;
 
     const oldGrid = JSON.parse(JSON.stringify(grid));
@@ -148,14 +150,10 @@ export default function GameScreen({ navigation }) {
     }
   };
 
-  // --- DELETE TILE SELECTION FUNCTION ---
   const handleTileSelect = (r, c) => {
     if (!isDeleteMode) return;
-
-    // 1. Check if target tile actually has a number
     if (grid[r][c] === 0) return;
 
-    // 2. Count total tiles left on the board
     let activeTileCount = 0;
     grid.forEach(row => row.forEach(cell => { if (cell !== 0) activeTileCount++; }));
 
@@ -165,18 +163,16 @@ export default function GameScreen({ navigation }) {
       return;
     }
 
-    // 3. Save the history state BEFORE making the delete modification
     const oldGrid = JSON.parse(JSON.stringify(grid));
     setHistory(prev => [...prev, { grid: oldGrid, score }]);
 
-    // 4. Modify and save state
     const nextGrid = grid.map(row => [...row]);
-    nextGrid[r][c] = 0; // Vaporize target tile
+    nextGrid[r][c] = 0;
 
     setNewTileCoord(null);
     setMergedCoords([]);
     setGrid(nextGrid);
-    setIsDeleteMode(false); // turn off power-up selection mode
+    setIsDeleteMode(false);
     saveGameState(nextGrid, score);
   };
 
@@ -214,11 +210,17 @@ export default function GameScreen({ navigation }) {
         </View>
       </View>
 
-      {/* TOP HEADER AD BAR PLACEHOLDER */}
-      <View style={styles.adBanner}>
-        <Text style={styles.adTag}>Ad</Text>
-        <Text style={styles.adBannerText}>Remove Ads — $2.99</Text>
-        <TouchableOpacity style={styles.adCloseBtn}><Text style={styles.adCloseText}>×</Text></TouchableOpacity>
+      {/* AD CONTAINER SECTION */}
+      <View style={styles.adWrapper}>
+        {showAd && (
+          <View style={styles.adBanner}>
+            <Text style={styles.adTag}>Ad Mock</Text>
+            <Text style={styles.adBannerText}>Remove Ads — $2.99</Text>
+            <TouchableOpacity style={styles.adCloseBtn} onPress={() => setShowAd(false)}>
+              <Text style={styles.adCloseText}>×</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* COMPACT BOARD MATRIX LAYER */}
@@ -258,11 +260,10 @@ export default function GameScreen({ navigation }) {
         </View>
       </View>
 
-      {/* UPDATED BOTTOM INTERFACE GRID */}
+      {/* BOTTOM INTERFACE GRID */}
       <View style={styles.powerUpsWrapper}>
         <Text style={styles.powerUpsTitle}>POWER-UPS</Text>
         
-        {/* ROW 1: UNDO & DELETE TILE */}
         <View style={styles.powerUpRow}>
           <TouchableOpacity 
             style={[styles.powerUpBtn, styles.undoBtn, history.length === 0 && styles.disabledBtn]} 
@@ -285,7 +286,6 @@ export default function GameScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* ROW 2: RESTART & SETTINGS */}
         <View style={styles.powerUpRow}>
           <TouchableOpacity 
             style={[styles.powerUpBtn, styles.homeBtn]} 
@@ -318,7 +318,6 @@ export default function GameScreen({ navigation }) {
           <View style={styles.settingsCard}>
             <Text style={styles.settingsTitle}>Settings</Text>
             
-            {/* TOGGLE 1: SOUND */}
             <View style={styles.settingRow}>
               <Text style={styles.settingLabel}>Sound Effects</Text>
               <TouchableOpacity style={styles.toggleActive} onPress={() => Alert.alert("Sound Toggle", "Functionality coming soon!")}>
@@ -326,7 +325,6 @@ export default function GameScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            {/* TOGGLE 2: HAPTICS */}
             <View style={styles.settingRow}>
               <Text style={styles.settingLabel}>Haptic Feedback</Text>
               <TouchableOpacity style={styles.toggleActive} onPress={() => Alert.alert("Haptics Toggle", "Functionality coming soon!")}>
@@ -334,12 +332,10 @@ export default function GameScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            {/* BUTTON 3: TUTORIAL LINK */}
             <TouchableOpacity style={styles.menuItemBtn} onPress={() => Alert.alert("How to Play", "Slide matching number blocks into each other to add them up and reach the 2048 tile!")}>
               <Text style={styles.menuItemText}>📖 How to Play Tutorial</Text>
             </TouchableOpacity>
 
-            {/* CLOSE MODAL BUTTON */}
             <TouchableOpacity style={styles.closeSettingsBtn} onPress={() => setShowSettingsModal(false)}>
               <Text style={styles.closeSettingsText}>Close</Text>
             </TouchableOpacity>
@@ -364,8 +360,8 @@ const styles = StyleSheet.create({
   scoreLabel: { color: '#eee4da', fontSize: 10, fontWeight: 'bold' },
   scoreValue: { color: '#ffffff', fontSize: 18, fontWeight: 'bold' },
   
-  // Ad Mockup Layout
-  adBanner: { flexDirection: 'row', backgroundColor: '#7c5bc4', width: width - 40, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'space-between', marginVertical: 12 },
+  adWrapper: { width: width - 40, minHeight: 50, marginVertical: 12, justifyContent: 'center', alignItems: 'center' },
+  adBanner: { flexDirection: 'row', backgroundColor: '#7c5bc4', width: '100%', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'space-between' },
   adTag: { backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff', fontSize: 10, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, fontWeight: 'bold' },
   adBannerText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
   adCloseBtn: { paddingHorizontal: 4 },
@@ -376,7 +372,6 @@ const styles = StyleSheet.create({
   tileContainer: { ...StyleSheet.absoluteFillObject, padding: 5 },
   cellPlaceholder: { width: (width - 50) / 4 - 10, height: (width - 50) / 4 - 10, margin: 5, borderRadius: 5, backgroundColor: 'rgba(238, 228, 218, 0.35)' },
 
-  // Power Ups Layout Wrapper
   powerUpsWrapper: { width: width - 40, marginTop: 20 },
   powerUpsTitle: { fontSize: 11, fontWeight: 'bold', color: '#bbada0', marginBottom: 6, letterSpacing: 0.5 },
   powerUpRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
@@ -384,18 +379,15 @@ const styles = StyleSheet.create({
   powerUpBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
   badge: { backgroundColor: 'rgba(0,0,0,0.15)', fontSize: 11, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10, overflow: 'hidden' },
   
-  // Color profiles matching your clean UI
   undoBtn: { backgroundColor: '#f9945c' },
   deleteBtn: { backgroundColor: '#ff6b54' },
   activeDeleteBtn: { backgroundColor: '#c43d27' },
   homeBtn: { backgroundColor: '#8f7a66' }, 
   settingsBtn: { backgroundColor: '#bbada0' }, 
   
-  // Visibility fixes for disabled states
   disabledBtn: { backgroundColor: '#e4dbd2', opacity: 0.7 },
   disabledBtnText: { color: '#a69a8f' },
 
-  // Settings Overlay Modal Styles
   modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.4)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
   settingsCard: { width: width * 0.8, backgroundColor: '#faf8ef', padding: 24, borderRadius: 10, alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84 },
   settingsTitle: { fontSize: 26, fontWeight: 'bold', color: '#776e65', marginBottom: 20 },
