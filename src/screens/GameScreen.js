@@ -18,7 +18,7 @@ const BannerAdMock = ({ onFailed }) => (
   </View>
 );
 
-// Import our new wrapper utility to prevent 'undefined' crashes
+// Import our wrapper utility to prevent 'undefined' crashes
 import { logGameEvent } from '../utils/analytics';
 
 const { width } = Dimensions.get('window');
@@ -45,6 +45,9 @@ export default function GameScreen({ navigation }) {
   // --- AD VISIBILITY TRACKER ---
   const [showAd, setShowAd] = useState(true);
 
+  // --- NEW STATE FOR CUSTOM GAME OVER SCREEN ---
+  const [showGameOverScreen, setShowGameOverScreen] = useState(false);
+
   const scoreBounce = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -60,7 +63,6 @@ export default function GameScreen({ navigation }) {
       const storedName = await getUsername();
       setUsername(storedName);
 
-      // Log layout view safely
       logGameEvent('screen_view', {
         screen_name: 'GameScreen',
         purpose: 'active_gameplay'
@@ -84,7 +86,6 @@ export default function GameScreen({ navigation }) {
   };
 
   const resetGame = () => {
-    // Log tracking parameter data metrics safely
     logGameEvent('game_restart', {
       current_score_at_reset: score,
       moves_made_before_reset: history.length
@@ -94,6 +95,7 @@ export default function GameScreen({ navigation }) {
     setMergedCoords([]);
     setShowConfetti(false);
     setIsDeleteMode(false);
+    setShowGameOverScreen(false); // Close Game Over layout screen if open
     const newGrid = initializeGrid();
     setGrid(newGrid);
     setScore(0);
@@ -102,7 +104,8 @@ export default function GameScreen({ navigation }) {
   };
 
   const handleMove = async (direction) => {
-    if (isDeleteMode) return;
+    // Block swiping if player is selecting a tile to delete or if game is already over
+    if (isDeleteMode || showGameOverScreen) return;
 
     const oldGrid = JSON.parse(JSON.stringify(grid));
     const result = moveGrid(grid, direction);
@@ -172,10 +175,8 @@ export default function GameScreen({ navigation }) {
           setShowNameModal(true);
         }
 
-        Alert.alert("Game Over", `Your final score is ${nextScore}`, [
-          { text: "Return Home", onPress: () => navigation.navigate('Home') },
-          { text: "Try Again", onPress: () => resetGame() } 
-        ]);
+        // Trigger our beautiful custom layout overlay screen instead of native popup alerts!
+        setShowGameOverScreen(true);
       }
     }
   };
@@ -191,6 +192,7 @@ export default function GameScreen({ navigation }) {
       setNewTileCoord(null);
       setMergedCoords([]);
       setIsDeleteMode(false);
+      setShowGameOverScreen(false); // Safely reverse and hide game over layout
       setGrid(previousState.grid);
       setScore(previousState.score);
       setHistory(prev => prev.slice(0, -1));
@@ -227,7 +229,14 @@ export default function GameScreen({ navigation }) {
     setMergedCoords([]);
     setGrid(nextGrid);
     setIsDeleteMode(false);
+    setShowGameOverScreen(false); // Hide overlay to let user play their newly opened square!
     saveGameState(nextGrid, score);
+  };
+
+  const triggerGameOverDeleteMode = () => {
+    setShowGameOverScreen(false);
+    setIsDeleteMode(true);
+    Alert.alert("Power-Up Activated", "Select any numbered tile on the board to clear it and keep playing!");
   };
 
   const panResponder = PanResponder.create({
@@ -391,6 +400,56 @@ export default function GameScreen({ navigation }) {
         </View>
       )}
 
+      {/* --- BRAND NEW FULL SCREEN GAME OVER SCREEN OVERLAY --- */}
+      {showGameOverScreen && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.gameOverCard}>
+            <Text style={styles.gameOverEmoji}>🎮</Text>
+            <Text style={styles.gameOverTitle}>Game Over</Text>
+            
+            <View style={styles.finalScoreRow}>
+              <View style={styles.finalScoreBox}>
+                <Text style={styles.finalScoreLabel}>FINAL SCORE</Text>
+                <Text style={styles.finalScoreValue}>{score}</Text>
+              </View>
+            </View>
+
+            <Text style={styles.gameOverHelpText}>Use a power-up to save your game or start fresh:</Text>
+
+            {/* OPTIONS ROW 1: UNDO & DELETE */}
+            <View style={styles.gameOverBtnRow}>
+              <TouchableOpacity 
+                style={[styles.gameOverBtn, styles.undoBtn, history.length === 0 && styles.disabledBtn]} 
+                onPress={handleUndo}
+                disabled={history.length === 0}
+              >
+                <Text style={[styles.powerUpBtnText, history.length === 0 && styles.disabledBtnText]}>
+                  ↩ Undo Move
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.gameOverBtn, styles.deleteBtn]} 
+                onPress={triggerGameOverDeleteMode}
+              >
+                <Text style={styles.powerUpBtnText}>✕ Delete Tile</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* OPTIONS ROW 2: RESTART & HOME */}
+            <View style={styles.gameOverBtnRow}>
+              <TouchableOpacity style={[styles.gameOverBtn, styles.homeBtn]} onPress={resetGame}>
+                <Text style={styles.powerUpBtnText}>🔄Restart</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.gameOverBtn, styles.settingsBtn]} onPress={() => { setShowGameOverScreen(false); navigation.navigate('Home'); }}>
+                <Text style={styles.powerUpBtnText}>🏠 Home Menu</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
       <Confetti active={showConfetti} />
       <UsernameModal visible={showNameModal} onSave={handleNameSave} />
     </View>
@@ -436,7 +495,7 @@ const styles = StyleSheet.create({
   disabledBtn: { backgroundColor: '#e4dbd2', opacity: 0.7 },
   disabledBtnText: { color: '#a69a8f' },
 
-  modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.4)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
+  modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.55)', justifyContent: 'center', alignItems: 'center', zIndex: 2000 },
   settingsCard: { width: width * 0.8, backgroundColor: '#faf8ef', padding: 24, borderRadius: 10, alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84 },
   settingsTitle: { fontSize: 26, fontWeight: 'bold', color: '#776e65', marginBottom: 20 },
   settingRow: { flexDirection: 'row', width: '100%', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee4da' },
@@ -446,5 +505,17 @@ const styles = StyleSheet.create({
   menuItemBtn: { width: '100%', paddingVertical: 14, backgroundColor: '#bbada0', borderRadius: 6, alignItems: 'center', marginTop: 16 },
   menuItemText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
   closeSettingsBtn: { marginTop: 24, paddingVertical: 10, width: '100%', alignItems: 'center' },
-  closeSettingsText: { color: '#776e65', fontSize: 15, fontWeight: 'bold', opacity: 0.8 }
+  closeSettingsText: { color: '#776e65', fontSize: 15, fontWeight: 'bold', opacity: 0.8 },
+
+  // --- GAME OVER OVERLAY SCREEN STYLES ---
+  gameOverCard: { width: width * 0.85, backgroundColor: '#faf8ef', padding: 24, borderRadius: 12, alignItems: 'center', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
+  gameOverEmoji: { fontSize: 42, marginBottom: 5 },
+  gameOverTitle: { fontSize: 32, fontWeight: 'bold', color: '#776e65', marginBottom: 15 },
+  finalScoreRow: { width: '100%', alignItems: 'center', marginBottom: 15 },
+  finalScoreBox: { backgroundColor: '#bbada0', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 6, alignItems: 'center', minWidth: 160 },
+  finalScoreLabel: { color: '#eee4da', fontSize: 11, fontWeight: 'bold', letterSpacing: 0.5 },
+  finalScoreValue: { color: '#ffffff', fontSize: 28, fontWeight: 'bold', marginTop: 2 },
+  gameOverHelpText: { color: '#776e65', fontSize: 13, textAlign: 'center', marginBottom: 20, opacity: 0.8, paddingHorizontal: 10 },
+  gameOverBtnRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 12 },
+  gameOverBtn: { paddingVertical: 14, borderRadius: 6, width: '48.5%', alignItems: 'center', justifyContent: 'center' }
 });
