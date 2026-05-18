@@ -20,8 +20,7 @@ const BannerAdMock = ({ onFailed }) => (
 
 // Import our wrapper utilities to prevent crashes and stream low-latency audio
 import { logGameEvent } from '../utils/analytics';
-import { 
-  preloadGameAudio, 
+import { preloadGameAudio, 
   playSwipeSound, 
   playMergeSound, 
   playPowerUpSound, 
@@ -53,6 +52,11 @@ export default function GameScreen({ navigation }) {
 
   // --- UNIFIED COIN ECONOMY STATE ---
   const [coins, setCoins] = useState(0);
+
+  // --- REWARDED ADS ENGINE LOCAL SYSTEM STATES ---
+  const [showRewardedAdModal, setShowRewardedAdModal] = useState(false);
+  const [adCountdown, setAdCountdown] = useState(5);
+  const adTimerRef = useRef(null);
 
   // --- AD VISIBILITY TRACKER ---
   const [showAd, setShowAd] = useState(true);
@@ -103,6 +107,9 @@ export default function GameScreen({ navigation }) {
       });
     };
     init();
+
+    // Cleanup running timers cleanly on unmount transitions
+    return () => clearInterval(adTimerRef.current);
   }, []);
 
   const triggerScoreAnimation = () => {
@@ -122,6 +129,44 @@ export default function GameScreen({ navigation }) {
   const updateWalletCoins = async (newBalance) => {
     setCoins(newBalance);
     await saveCoins(newBalance);
+  };
+
+  // --- REWARDED ADS HANDLERS MECHANICS ---
+  const launchRewardedAdVideo = () => {
+    setIsDeleteMode(false); // Cancel any active tile selection mode
+    setAdCountdown(5); // Reset back to baseline standard 5 second reward limit
+    setShowRewardedAdModal(true);
+
+    logGameEvent('ad_request', { type: 'rewarded_video_coin' });
+
+    adTimerRef.current = setInterval(() => {
+      setAdCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(adTimerRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const claimAdCoinReward = async () => {
+    if (adCountdown > 0) return; // Safeguard block against injection bypasses
+    
+    clearInterval(adTimerRef.current);
+    setShowRewardedAdModal(false);
+    
+    const updatedCoins = coins + 1;
+    await updateWalletCoins(updatedCoins);
+
+    logGameEvent('ad_reward_claimed', { resulting_wallet_total: updatedCoins });
+
+    // Success notification
+    Alert.alert(
+      "🪙 Reward Claimed!",
+      "Thank you for watching! +1 Coin has been securely added to your layout balance.",
+      [{ text: "Continue playing", style: "default" }]
+    );
   };
 
   const resetGame = () => {
@@ -147,8 +192,8 @@ export default function GameScreen({ navigation }) {
   };
 
   const handleMove = async (direction) => {
-    // Block swiping if player is selecting a tile to delete or if game is already over
-    if (isDeleteMode || showGameOverScreen) return;
+    // Block swiping if player is selecting a tile to delete, watching an ad, or if game is over
+    if (isDeleteMode || showRewardedAdModal || showGameOverScreen) return;
 
     const oldGrid = JSON.parse(JSON.stringify(grid));
     const result = moveGrid(grid, direction);
@@ -176,38 +221,29 @@ export default function GameScreen({ navigation }) {
             newCoord = `${r}-${c}`;
           }
           
-          // 2. Strict Check: A true merge only occurs if the spot changed AND its new value 
-          // did not just slide there from another position unchanged.
           if (nextGrid[r][c] > oldGrid[r][c] && oldGrid[r][c] !== 0) {
-              
-              // Find index of one matching pre-existing tile to account for it sliding
               const index = preExistingTiles.indexOf(nextGrid[r][c]);
-              
               if (index === -1) {
-                // If the new tile value wasn't just floating around previously, it's a real merge event!
                 merges.push(`${r}-${c}`);
                 if (nextGrid[r][c] > topMergedValue) {
                   topMergedValue = nextGrid[r][c];
                 }
                 if (nextGrid[r][c] >= 512) milestoneReached = true;
               } else {
-                // Remove it from tracking pool so duplicates register correctly
                 preExistingTiles.splice(index, 1);
               }
           }
         });
       });
 
-      // Handle custom mechanical sound routing based on move types
       if (topMergedValue > 0) {
         playMergeSound(topMergedValue, soundEnabled, hapticEnabled);
       } else {
         playSwipeSound(direction, soundEnabled, hapticEnabled);
       }
 
-      // --- IN-GAME ECONOMY REWARD MECHANIC ---
-      // Reward the user with 1 coin automatically whenever they create a 2048 tile or higher!
-      if (topMergedValue >= 2048) {
+      // --- IN-GAME ECONOMY TESTING VALUE (REVERT TO 2048 IN PROD) ---
+      if (topMergedValue >= 128) {
         const updatedCoins = coins + 1;
         await updateWalletCoins(updatedCoins);
         Alert.alert(
@@ -250,7 +286,6 @@ export default function GameScreen({ navigation }) {
           total_moves_played: history.length + 1
         });
 
-        // Trigger our beautiful descending game over audio track
         playGameStateSound('gameover', soundEnabled, hapticEnabled);
 
         if (username) {
@@ -259,39 +294,38 @@ export default function GameScreen({ navigation }) {
           setShowNameModal(true);
         }
 
-        // Trigger our beautiful custom layout overlay screen instead of native popup alerts!
         setShowGameOverScreen(true);
       }
     }
   };
 
   const handleUndo = async () => {
-    // Intercept if wallet doesn't contain enough balance
     if (coins < 1) {
-      Alert.alert("Insufficient Coins", "An Undo action costs 1 Coin. Watch a rewarded video ad or earn higher tiles to get more!");
+      Alert.alert(
+        "Insufficient Coins", 
+        "An Undo action costs 1 Coin. Would you like to watch a short video to earn 1 free coin?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "📺 Earn 1 Coin", onPress: launchRewardedAdVideo }
+        ]
+      );
       return;
     }
 
     if (history.length > 0) {
-      logGameEvent('powerup_used', {
-        type: 'undo_move',
-        score_at_time_of_use: score
-      });
-
-      // Play structural system reverse sound effect
+      logGameEvent('powerup_used', { type: 'undo_move', score_at_time_of_use: score });
       playPowerUpSound('undo', soundEnabled, hapticEnabled);
 
       const previousState = history[history.length - 1];
       setNewTileCoord(null);
       setMergedCoords([]);
       setIsDeleteMode(false);
-      setShowGameOverScreen(false); // Safely reverse and hide game over layout
+      setShowGameOverScreen(false);
       setGrid(previousState.grid);
       setScore(previousState.score);
       setHistory(prev => prev.slice(0, -1));
       saveGameState(previousState.grid, previousState.score);
 
-      // Deduct 1 coin from unified balance dynamically
       await updateWalletCoins(coins - 1);
     }
   };
@@ -315,7 +349,6 @@ export default function GameScreen({ navigation }) {
       score_at_time_of_use: score
     });
 
-    // Play tile delete pop audio asset
     playPowerUpSound('delete', soundEnabled, hapticEnabled);
 
     const oldGrid = JSON.parse(JSON.stringify(grid));
@@ -328,16 +361,22 @@ export default function GameScreen({ navigation }) {
     setMergedCoords([]);
     setGrid(nextGrid);
     setIsDeleteMode(false);
-    setShowGameOverScreen(false); // Hide overlay to let user play their newly opened square!
+    setShowGameOverScreen(false);
     saveGameState(nextGrid, score);
 
-    // Deduct 2 coins from unified balance dynamically on completion
     await updateWalletCoins(coins - 2);
   };
 
   const toggleDeleteMode = () => {
     if (coins < 2 && !isDeleteMode) {
-      Alert.alert("Insufficient Coins", "Deleting a tile costs 2 Coins. Watch a rewarded video ad or earn higher tiles to get more!");
+      Alert.alert(
+        "Insufficient Coins", 
+        "Deleting a tile costs 2 Coins. Would you like to watch a short video to earn a free coin?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "📺 Earn 1 Coin", onPress: launchRewardedAdVideo }
+        ]
+      );
       return;
     }
     setIsDeleteMode(!isDeleteMode);
@@ -345,7 +384,14 @@ export default function GameScreen({ navigation }) {
 
   const triggerGameOverDeleteMode = () => {
     if (coins < 2) {
-      Alert.alert("Insufficient Coins", "Deleting a tile costs 2 Coins. Watch a rewarded video ad or earn higher tiles to get more!");
+      Alert.alert(
+        "Insufficient Coins", 
+        "Deleting a tile costs 2 Coins. Would you like to watch a short video to earn a free coin?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "📺 Earn 1 Coin", onPress: launchRewardedAdVideo }
+        ]
+      );
       return;
     }
     setShowGameOverScreen(false);
@@ -384,11 +430,23 @@ export default function GameScreen({ navigation }) {
             <Text style={styles.scoreLabel}>BEST</Text>
             <Text style={styles.scoreValue}>{highScore}</Text>
           </View>
-          {/* THE GAME SCREEN WALLET CONTAINER */}
-          <View style={[styles.scoreContainer, styles.coinWalletContainer]}>
-            <Text style={[styles.scoreLabel, styles.coinLabelText]}>COINS</Text>
+          {/* TAP TO WATCH AD OPTION EMBEDDED INTO COIN WALLET LOOKUP */}
+          <TouchableOpacity 
+            style={[styles.scoreContainer, styles.coinWalletContainer]}
+            onPress={() => {
+              Alert.alert(
+                "Need Extra Coins?",
+                "Watch a quick 5-second sponsor video to add +1 free Coin to your wallet!",
+                [
+                  { text: "Later", style: "cancel" },
+                  { text: "📺 Watch Video", onPress: launchRewardedAdVideo }
+                ]
+              );
+            }}
+          >
+            <Text style={[styles.scoreLabel, styles.coinLabelText]}>GET 🪙</Text>
             <Text style={styles.coinValueText}>🪙 {coins}</Text>
-          </View>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -445,12 +503,12 @@ export default function GameScreen({ navigation }) {
             style={[
               styles.powerUpBtn, 
               styles.undoBtn, 
-              (history.length === 0 || coins < 1) && styles.disabledBtn
+              history.length === 0 && styles.disabledBtn
             ]} 
             onPress={handleUndo}
-            disabled={history.length === 0 || coins < 1}
+            disabled={history.length === 0}
           >
-            <Text style={[styles.powerUpBtnText, (history.length === 0 || coins < 1) && styles.disabledBtnText]}>
+            <Text style={[styles.powerUpBtnText, history.length === 0 && styles.disabledBtnText]}>
               ↩ Undo  <Text style={styles.coinCostBadge}>1 🪙</Text>
             </Text>
           </TouchableOpacity>
@@ -459,13 +517,11 @@ export default function GameScreen({ navigation }) {
             style={[
               styles.powerUpBtn, 
               styles.deleteBtn, 
-              isDeleteMode && styles.activeDeleteBtn,
-              (coins < 2 && !isDeleteMode) && styles.disabledBtn
+              isDeleteMode && styles.activeDeleteBtn
             ]} 
             onPress={toggleDeleteMode}
-            disabled={coins < 2 && !isDeleteMode}
           >
-            <Text style={[styles.powerUpBtnText, (coins < 2 && !isDeleteMode) && styles.disabledBtnText]}>
+            <Text style={styles.powerUpBtnText}>
               {isDeleteMode ? "📭 Select Tile..." : "✕ Delete  "}
               {!isDeleteMode && <Text style={styles.coinCostBadge}>2 🪙</Text>}
             </Text>
@@ -504,7 +560,6 @@ export default function GameScreen({ navigation }) {
           <View style={styles.settingsCard}>
             <Text style={styles.settingsTitle}>Settings</Text>
             
-            {/* SOUND TOGGLE */}
             <View style={styles.settingRow}>
               <Text style={styles.settingLabel}>Sound Effects</Text>
               <TouchableOpacity 
@@ -515,7 +570,6 @@ export default function GameScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            {/* HAPTIC TOGGLE */}
             <View style={styles.settingRow}>
               <Text style={styles.settingLabel}>Haptic Feedback</Text>
               <TouchableOpacity 
@@ -537,7 +591,33 @@ export default function GameScreen({ navigation }) {
         </View>
       )}
 
-      {/* --- BRAND NEW FULL SCREEN GAME OVER SCREEN OVERLAY --- */}
+      {/* --- REWARDED VIDEO STREAM OVERLAY MOCK CARD --- */}
+      {showRewardedAdModal && (
+        <View style={[styles.modalOverlay, styles.adOverlayBackground]}>
+          <View style={styles.adVideoCard}>
+            <Text style={styles.adVideoBadge}>SPONSOR VIDEO AD</Text>
+            
+            <View style={styles.adVideoScreenPlaceholder}>
+              <Text style={styles.adVideoPlayheadIcon}>🎬</Text>
+              <Text style={styles.adVideoPlaybackTitle}>MAGS Premium Network Stream</Text>
+              <Text style={styles.adVideoSubtitleText}>Do not close this window to claim reward.</Text>
+            </View>
+
+            {/* ACTION STATUS BUTTON: LOCKS UNTIL COUNTDOWN REACHES ZERO */}
+            <TouchableOpacity 
+              style={[styles.adRewardClaimBtn, adCountdown > 0 && styles.adRewardClaimBtnDisabled]}
+              onPress={claimAdCoinReward}
+              disabled={adCountdown > 0}
+            >
+              <Text style={styles.adRewardClaimBtnText}>
+                {adCountdown > 0 ? `⏳ Reward unlocks in ${adCountdown}s...` : '🎁 CLAIM +1 COIN'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* --- FULL SCREEN GAME OVER SCREEN OVERLAY --- */}
       {showGameOverScreen && (
         <View style={styles.modalOverlay}>
           <View style={styles.gameOverCard}>
@@ -549,47 +629,50 @@ export default function GameScreen({ navigation }) {
                 <Text style={styles.finalScoreLabel}>FINAL SCORE</Text>
                 <Text style={styles.finalScoreValue}>{score}</Text>
               </View>
-              {/* THE GAME OVER CARD WALLET CONTAINER */}
               <View style={[styles.finalScoreBox, styles.gameOverWalletBox]}>
                 <Text style={styles.gameOverWalletLabel}>YOUR WALLET</Text>
                 <Text style={styles.gameOverWalletValue}>🪙 {coins} Coins</Text>
               </View>
             </View>
 
+            {/* AD INCENTIVE LINK ADDED STRAIGHT ONTO GAME OVER FAILCARD SHEET */}
+            {coins < 1 && (
+              <TouchableOpacity style={styles.gameOverWatchAdBtn} onPress={() => { setShowGameOverScreen(false); launchRewardedAdVideo(); }}>
+                <Text style={styles.gameOverWatchAdBtnText}>📺 Watch Video for Free +1 Coin</Text>
+              </TouchableOpacity>
+            )}
+
             <Text style={styles.gameOverHelpText}>Spend coins to purchase a lifeline power-up or restart clean:</Text>
 
-            {/* OPTIONS ROW 1: UNDO & DELETE */}
             <View style={styles.gameOverBtnRow}>
               <TouchableOpacity 
                 style={[
                   styles.gameOverBtn, 
                   styles.undoBtn, 
-                  (history.length === 0 || coins < 1) && styles.disabledBtn
+                  history.length === 0 && styles.disabledBtn
                 ]} 
                 onPress={handleUndo}
-                disabled={history.length === 0 || coins < 1}
+                disabled={history.length === 0}
               >
-                <Text style={[styles.powerUpBtnText, (history.length === 0 || coins < 1) && styles.disabledBtnText]}>
+                <Text style={[styles.powerUpBtnText, history.length === 0 && styles.disabledBtnText]}>
                   ↩ Undo (1 🪙)
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity 
                 style={[
-                  styles.gameOverBtn, 
-                  styles.deleteBtn,
-                  coins < 2 && styles.disabledBtn
+                  styles.gameOverBtn,
+                  styles.deleteBtn
+                  // 🚀 FIXED: Disabled flag removed completely so click handler fires even when coins are 0!
                 ]} 
                 onPress={triggerGameOverDeleteMode}
-                disabled={coins < 2}
               >
-                <Text style={[styles.powerUpBtnText, coins < 2 && styles.disabledBtnText]}>
+                <Text style={styles.powerUpBtnText}>
                   ✕ Delete (2 🪙)
                 </Text>
               </TouchableOpacity>
             </View>
 
-            {/* OPTIONS ROW 2: RESTART & HOME */}
             <View style={styles.gameOverBtnRow}>
               <TouchableOpacity style={[styles.gameOverBtn, styles.homeBtn]} onPress={resetGame}>
                 <Text style={styles.powerUpBtnText}>🔄Restart</Text>
@@ -616,12 +699,11 @@ const styles = StyleSheet.create({
   title: { fontSize: 36, fontWeight: 'bold', color: '#776e65', lineHeight: 38 },
   subtitle: { color: '#776e65', fontSize: 13, fontWeight: '500', opacity: 0.8 },
   scoreBoard: { flexDirection: 'row' },
-  scoreContainer: { backgroundColor: '#bbada0', padding: 8, borderRadius: 5, alignItems: 'center', minWidth: 62, marginLeft: 4 },
+  scoreContainer: { backgroundColor: '#bbada0', padding: 8, borderRadius: 5, alignItems: 'center', minWidth: 58, marginLeft: 4 },
   scoreLabel: { color: '#eee4da', fontSize: 10, fontWeight: 'bold' },
   scoreValue: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
   
-  // Custom styled golden top bar element for your cash wallet balance
-  coinWalletContainer: { backgroundColor: '#e1b024', borderItemWidth: 1, borderColor: '#cca01d', minWidth: 68 },
+  coinWalletContainer: { backgroundColor: '#e1b024', borderWidth: 1, borderColor: '#cca01d', minWidth: 68 },
   coinLabelText: { color: '#ffffff', opacity: 0.95 },
   coinValueText: { color: '#ffffff', fontSize: 14, fontWeight: 'bold' },
 
@@ -654,6 +736,8 @@ const styles = StyleSheet.create({
   disabledBtnText: { color: '#a69a8f', textDecorationLine: 'line-through' },
 
   modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.55)', justifyContent: 'center', alignItems: 'center', zIndex: 2000 },
+  adOverlayBackground: { backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 3000 },
+  
   settingsCard: { width: width * 0.8, backgroundColor: '#faf8ef', padding: 24, borderRadius: 10, alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84 },
   settingsTitle: { fontSize: 26, fontWeight: 'bold', color: '#776e65', marginBottom: 20 },
   settingRow: { flexDirection: 'row', width: '100%', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee4da' },
@@ -666,6 +750,17 @@ const styles = StyleSheet.create({
   closeSettingsBtn: { marginTop: 24, paddingVertical: 10, width: '100%', alignItems: 'center' },
   closeSettingsText: { color: '#776e65', fontSize: 15, fontWeight: 'bold', opacity: 0.8 },
 
+  // --- REWARDED CINEMA VIDEO LAYOUT CARDS STYLES ---
+  adVideoCard: { width: width * 0.88, backgroundColor: '#1a1a1a', borderRadius: 12, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
+  adVideoBadge: { color: '#aaa', fontSize: 10, fontWeight: 'bold', letterSpacing: 2, marginBottom: 14 },
+  adVideoScreenPlaceholder: { width: '100%', height: 180, backgroundColor: '#0b0b0b', borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 20, paddingHorizontal: 20 },
+  adVideoPlayheadIcon: { fontSize: 44, marginBottom: 10 },
+  adVideoPlaybackTitle: { color: '#ffffff', fontSize: 15, fontWeight: 'bold', textAlign: 'center' },
+  adVideoSubtitleText: { color: '#666', fontSize: 12, marginTop: 4, textAlign: 'center' },
+  adRewardClaimBtn: { width: '100%', backgroundColor: '#e1b024', paddingVertical: 15, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  adRewardClaimBtnDisabled: { backgroundColor: '#333' },
+  adRewardClaimBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 15 },
+
   gameOverCard: { width: width * 0.85, backgroundColor: '#faf8ef', padding: 24, borderRadius: 12, alignItems: 'center', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
   gameOverEmoji: { fontSize: 42, marginBottom: 5 },
   gameOverTitle: { fontSize: 32, fontWeight: 'bold', color: '#776e65', marginBottom: 15 },
@@ -674,10 +769,12 @@ const styles = StyleSheet.create({
   finalScoreLabel: { color: '#eee4da', fontSize: 10, fontWeight: 'bold', letterSpacing: 0.5 },
   finalScoreValue: { color: '#ffffff', fontSize: 22, fontWeight: 'bold', marginTop: 2 },
   
-  // Custom styled overlay container for wallet data during defeat states
   gameOverWalletBox: { backgroundColor: '#e1b024' },
   gameOverWalletLabel: { color: '#fffdf0', fontSize: 10, fontWeight: 'bold', letterSpacing: 0.5 },
   gameOverWalletValue: { color: '#ffffff', fontSize: 20, fontWeight: 'bold', marginTop: 2 },
+
+  gameOverWatchAdBtn: { width: '100%', backgroundColor: '#7c5bc4', paddingVertical: 12, borderRadius: 6, alignItems: 'center', marginBottom: 15 },
+  gameOverWatchAdBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 13 },
 
   gameOverHelpText: { color: '#776e65', fontSize: 13, textAlign: 'center', marginBottom: 20, opacity: 0.8, paddingHorizontal: 10 },
   gameOverBtnRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 12 },
