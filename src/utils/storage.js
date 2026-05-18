@@ -70,3 +70,25 @@ export const clearStorage = async () => {
     console.error("Error clearing storage", e);
   }
 };
+
+//Saves the current coin balance to persistent device storage
+export const saveCoins = async (coins) => {
+  try {
+    await AsyncStorage.setItem('mags_2048_coins', coins.toString());
+  } catch (error) {
+    console.error('Error saving coins:', error);
+  }
+};
+
+/**
+ * Retrieves the stored coin balance, or returns null if it's a first-time player
+ */
+export const getCoins = async () => {
+  try {
+    const coins = await AsyncStorage.getItem('mags_2048_coins');
+    return coins !== null ? parseInt(coins, 10) : null;
+  } catch (error) {
+    console.error('Error getting coins:', error);
+    return null;
+  }
+};
