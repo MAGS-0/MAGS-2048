@@ -1,8 +1,10 @@
 import { db } from '../../firebaseConfig';
 import { 
   collection, 
-  addDoc, 
+  doc,
+  setDoc, 
   getDocs, 
+  getDoc,
   query, 
   where, 
   orderBy, 
@@ -10,16 +12,32 @@ import {
   serverTimestamp 
 } from 'firebase/firestore';
 
-// 1. Submit a score to the global leaderboard
+// 1. Submit a score to the global leaderboard (Overwrites to prevent name duplicates!)
 export const submitGlobalScore = async (username, score, gridType = '4x4') => {
   try {
-    await addDoc(collection(db, 'leaderboards'), {
+    // Reference a unique document named EXACTLY after the username inside the collection
+    const docRef = doc(db, 'leaderboards', username);
+    
+    // Check if this player already has a score stored in the database
+    const docSnap = await getDoc(docRef);
+    
+    if (docSnap.exists()) {
+      const existingData = docSnap.data();
+      // Only overwrite if the new score is higher than their previous history record
+      if (parseInt(score) <= existingData.score) {
+        console.log("Current score isn't higher than previous personal best. Skipping update.");
+        return;
+      }
+    }
+
+    // Set doc cleanly ensures one record per username exists globally
+    await setDoc(docRef, {
       username,
       score: parseInt(score),
       gridType,
       timestamp: serverTimestamp(),
     });
-    console.log("Score submitted successfully!");
+    console.log("Score submitted successfully (Leaderboard updated/cleaned)!");
   } catch (e) {
     console.error("Error submitting score: ", e);
   }

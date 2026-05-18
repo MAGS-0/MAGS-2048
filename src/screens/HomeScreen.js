@@ -41,7 +41,7 @@ export default function HomeScreen({ navigation }) {
         style={styles.button} 
         onPress={handlePlayPress}
       >
-        <Text style={styles.buttonText}>PLAY GAME</Text>
+        <Text style={styles.buttonText}>PLAY GAME 4x4</Text>
       </TouchableOpacity>
 
       <TouchableOpacity 

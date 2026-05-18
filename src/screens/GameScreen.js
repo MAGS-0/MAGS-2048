@@ -18,8 +18,15 @@ const BannerAdMock = ({ onFailed }) => (
   </View>
 );
 
-// Import our wrapper utility to prevent 'undefined' crashes
+// Import our wrapper utilities to prevent crashes and stream low-latency audio
 import { logGameEvent } from '../utils/analytics';
+import { 
+  preloadGameAudio, 
+  playSwipeSound, 
+  playMergeSound, 
+  playPowerUpSound, 
+  playGameStateSound 
+} from '../utils/audioController';
 
 const { width } = Dimensions.get('window');
 const CELL_SIZE = (width - 40) / 4;
@@ -38,6 +45,8 @@ export default function GameScreen({ navigation }) {
 
   // --- STATES FOR SETTINGS INTERFACE ---
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [hapticEnabled, setHapticEnabled] = useState(true);
 
   // --- STATES FOR DELETE POWER-UP ---
   const [isDeleteMode, setIsDeleteMode] = useState(false);
@@ -52,10 +61,16 @@ export default function GameScreen({ navigation }) {
 
   useEffect(() => {
     const init = async () => {
+      // Preload the sound files into memory right away
+      await preloadGameAudio();
+
       const saved = await loadGameState();
       if (saved && saved.grid) {
         setGrid(saved.grid);
         setScore(saved.score);
+      } else {
+        // Play the game start sound if no saved state exists
+        playGameStateSound('start', soundEnabled, hapticEnabled);
       }
       const high = await getHighScore();
       setHighScore(high);
@@ -91,6 +106,9 @@ export default function GameScreen({ navigation }) {
       moves_made_before_reset: history.length
     });
 
+    // Play start sound on game reset
+    playGameStateSound('start', soundEnabled, hapticEnabled);
+
     setNewTileCoord(null);
     setMergedCoords([]);
     setShowConfetti(false);
@@ -110,7 +128,7 @@ export default function GameScreen({ navigation }) {
     const oldGrid = JSON.parse(JSON.stringify(grid));
     const result = moveGrid(grid, direction);
     
-    if (result.changed) {
+ if (result.changed) {
       setHistory(prev => [...prev, { grid: oldGrid, score }]);
       
       const nextScore = score + result.score;
@@ -121,20 +139,46 @@ export default function GameScreen({ navigation }) {
       let milestoneReached = false;
       let topMergedValue = 0;
 
+      // 1. Map out all values that already existed on the board before the move
+      const preExistingTiles = [];
+      oldGrid.forEach(row => row.forEach(cell => {
+        if (cell > 0) preExistingTiles.push(cell);
+      }));
+
       nextGrid.forEach((row, r) => {
         row.forEach((cell, c) => {
           if (oldGrid[r][c] === 0 && nextGrid[r][c] !== 0) {
             newCoord = `${r}-${c}`;
           }
+          
+          // 2. Strict Check: A true merge only occurs if the spot changed AND its new value 
+          // did not just slide there from another position unchanged.
           if (nextGrid[r][c] > oldGrid[r][c] && oldGrid[r][c] !== 0) {
-              merges.push(`${r}-${c}`);
-              if (nextGrid[r][c] > topMergedValue) {
-                topMergedValue = nextGrid[r][c];
+              
+              // Find index of one matching pre-existing tile to account for it sliding
+              const index = preExistingTiles.indexOf(nextGrid[r][c]);
+              
+              if (index === -1) {
+                // If the new tile value wasn't just floating around previously, it's a real merge event!
+                merges.push(`${r}-${c}`);
+                if (nextGrid[r][c] > topMergedValue) {
+                  topMergedValue = nextGrid[r][c];
+                }
+                if (nextGrid[r][c] >= 512) milestoneReached = true;
+              } else {
+                // Remove it from tracking pool so duplicates register correctly
+                preExistingTiles.splice(index, 1);
               }
-              if (nextGrid[r][c] >= 512) milestoneReached = true;
           }
         });
       });
+
+      // Handle custom mechanical sound routing based on move types
+      if (topMergedValue > 0) {
+        playMergeSound(topMergedValue, soundEnabled, hapticEnabled);
+      } else {
+        playSwipeSound(direction, soundEnabled, hapticEnabled);
+      }
 
       if (topMergedValue >= 128) {
         logGameEvent('score_milestone', {
@@ -169,6 +213,9 @@ export default function GameScreen({ navigation }) {
           total_moves_played: history.length + 1
         });
 
+        // Trigger our beautiful descending game over audio track
+        playGameStateSound('gameover', soundEnabled, hapticEnabled);
+
         if (username) {
           await submitGlobalScore(username, nextScore, '4x4');
         } else {
@@ -187,6 +234,9 @@ export default function GameScreen({ navigation }) {
         type: 'undo_move',
         score_at_time_of_use: score
       });
+
+      // Play structural system reverse sound effect
+      playPowerUpSound('undo', soundEnabled, hapticEnabled);
 
       const previousState = history[history.length - 1];
       setNewTileCoord(null);
@@ -218,6 +268,9 @@ export default function GameScreen({ navigation }) {
       deleted_tile_value: grid[r][c],
       score_at_time_of_use: score
     });
+
+    // Play tile delete pop audio asset
+    playPowerUpSound('delete', soundEnabled, hapticEnabled);
 
     const oldGrid = JSON.parse(JSON.stringify(grid));
     setHistory(prev => [...prev, { grid: oldGrid, score }]);
@@ -375,17 +428,25 @@ export default function GameScreen({ navigation }) {
           <View style={styles.settingsCard}>
             <Text style={styles.settingsTitle}>Settings</Text>
             
+            {/* SOUND TOGGLE */}
             <View style={styles.settingRow}>
               <Text style={styles.settingLabel}>Sound Effects</Text>
-              <TouchableOpacity style={styles.toggleActive} onPress={() => Alert.alert("Sound Toggle", "Functionality coming soon!")}>
-                <Text style={styles.toggleText}>ON</Text>
+              <TouchableOpacity 
+                style={soundEnabled ? styles.toggleActive : styles.toggleInactive} 
+                onPress={() => setSoundEnabled(!soundEnabled)}
+              >
+                <Text style={styles.toggleText}>{soundEnabled ? "ON" : "OFF"}</Text>
               </TouchableOpacity>
             </View>
 
+            {/* HAPTIC TOGGLE */}
             <View style={styles.settingRow}>
               <Text style={styles.settingLabel}>Haptic Feedback</Text>
-              <TouchableOpacity style={styles.toggleActive} onPress={() => Alert.alert("Haptics Toggle", "Functionality coming soon!")}>
-                <Text style={styles.toggleText}>ON</Text>
+              <TouchableOpacity 
+                style={hapticEnabled ? styles.toggleActive : styles.toggleInactive} 
+                onPress={() => setHapticEnabled(!hapticEnabled)}
+              >
+                <Text style={styles.toggleText}>{hapticEnabled ? "ON" : "OFF"}</Text>
               </TouchableOpacity>
             </View>
 
@@ -501,13 +562,13 @@ const styles = StyleSheet.create({
   settingRow: { flexDirection: 'row', width: '100%', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee4da' },
   settingLabel: { fontSize: 16, fontWeight: '600', color: '#776e65' },
   toggleActive: { backgroundColor: '#8f7a66', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 4 },
+  toggleInactive: { backgroundColor: '#e4dbd2', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 4 },
   toggleText: { color: '#ffffff', fontWeight: 'bold', fontSize: 13 },
   menuItemBtn: { width: '100%', paddingVertical: 14, backgroundColor: '#bbada0', borderRadius: 6, alignItems: 'center', marginTop: 16 },
   menuItemText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
   closeSettingsBtn: { marginTop: 24, paddingVertical: 10, width: '100%', alignItems: 'center' },
   closeSettingsText: { color: '#776e65', fontSize: 15, fontWeight: 'bold', opacity: 0.8 },
 
-  // --- GAME OVER OVERLAY SCREEN STYLES ---
   gameOverCard: { width: width * 0.85, backgroundColor: '#faf8ef', padding: 24, borderRadius: 12, alignItems: 'center', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
   gameOverEmoji: { fontSize: 42, marginBottom: 5 },
   gameOverTitle: { fontSize: 32, fontWeight: 'bold', color: '#776e65', marginBottom: 15 },
