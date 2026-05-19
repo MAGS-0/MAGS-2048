@@ -7,20 +7,62 @@ import Tile from '../components/Tile';
 import Confetti from '../components/Confetti';
 import UsernameModal from '../components/UsernameModal';
 
-// Safely display mock fallback layout if AdMob isn't natively bound
+// Safely display mock fallback layout if AdMob banner isn't natively bound
 const BannerAdMock = ({ onFailed }) => (
   <View style={styles.adBanner}>
     <Text style={styles.adTag}>Ad Mock</Text>
-    <Text style={styles.adBannerText}>Remove Ads — $2.99</Text>
+    <Text style={styles.adBannerText}>Remove Ads + Daily Coins — $2.99</Text>
     <TouchableOpacity style={styles.adCloseBtn} onPress={onFailed}>
       <Text style={styles.adCloseText}>×</Text>
     </TouchableOpacity>
   </View>
 );
 
+// --- NEW FULL-SCREEN INTERSTITIAL AD MOCK COMPONENT ---
+const InterstitialAdMock = ({ onClose }) => {
+  const [countdown, setCountdown] = useState(3);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timerRef.current);
+  }, []);
+
+  return (
+    <View style={styles.interstitialOverlay}>
+      <View style={styles.interstitialContainer}>
+        <Text style={styles.interstitialBadge}>SPONSOR INTERSTITIAL AD</Text>
+        <Text style={styles.interstitialMainIcon}>🎬</Text>
+        <Text style={styles.interstitialTitle}>MAGS Premium Ad Network</Text>
+        <Text style={styles.interstitialSubtext}>Full-screen interstitial showing at game break point.</Text>
+        
+        <TouchableOpacity 
+          style={[styles.interstitialCloseBtn, countdown > 0 && styles.interstitialCloseBtnDisabled]}
+          onPress={onClose}
+          disabled={countdown > 0}
+        >
+          <Text style={styles.interstitialCloseText}>
+            {countdown > 0 ? `Skip in ${countdown}s` : 'Close Ad ✕'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
 // Import our wrapper utilities to prevent crashes and stream low-latency audio
 import { logGameEvent } from '../utils/analytics';
-import { preloadGameAudio, 
+import { 
+  preloadGameAudio, 
   playSwipeSound, 
   playMergeSound, 
   playPowerUpSound, 
@@ -61,20 +103,18 @@ export default function GameScreen({ navigation }) {
   // --- AD VISIBILITY TRACKER ---
   const [showAd, setShowAd] = useState(true);
 
-  // --- NEW STATE FOR CUSTOM GAME OVER SCREEN ---
+  // --- NEW STATES FOR GAME OVER AND INTERSTITIAL FLOW ---
   const [showGameOverScreen, setShowGameOverScreen] = useState(false);
+  const [showInterstitial, setShowInterstitial] = useState(false);
 
   const scoreBounce = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     const init = async () => {
-      // Preload the sound files into memory right away
       await preloadGameAudio();
 
-      // Load or initialize our central wallet profile values
       const storedCoins = await getCoins();
       if (storedCoins === null) {
-        // Brand new installation profile detected! Give welcome gift.
         setCoins(5);
         await saveCoins(5);
         Alert.alert(
@@ -83,7 +123,6 @@ export default function GameScreen({ navigation }) {
           [{ text: "Awesome!", style: "default" }]
         );
       } else {
-        // Load player's existing saved wallet total balance
         setCoins(storedCoins);
       }
 
@@ -92,7 +131,6 @@ export default function GameScreen({ navigation }) {
         setGrid(saved.grid);
         setScore(saved.score);
       } else {
-        // Play the game start sound if no saved state exists
         playGameStateSound('start', soundEnabled, hapticEnabled);
       }
       const high = await getHighScore();
@@ -108,7 +146,6 @@ export default function GameScreen({ navigation }) {
     };
     init();
 
-    // Cleanup running timers cleanly on unmount transitions
     return () => clearInterval(adTimerRef.current);
   }, []);
 
@@ -133,8 +170,8 @@ export default function GameScreen({ navigation }) {
 
   // --- REWARDED ADS HANDLERS MECHANICS ---
   const launchRewardedAdVideo = () => {
-    setIsDeleteMode(false); // Cancel any active tile selection mode
-    setAdCountdown(5); // Reset back to baseline standard 5 second reward limit
+    setIsDeleteMode(false);
+    setAdCountdown(5);
     setShowRewardedAdModal(true);
 
     logGameEvent('ad_request', { type: 'rewarded_video_coin' });
@@ -151,7 +188,7 @@ export default function GameScreen({ navigation }) {
   };
 
   const claimAdCoinReward = async () => {
-    if (adCountdown > 0) return; // Safeguard block against injection bypasses
+    if (adCountdown > 0) return;
     
     clearInterval(adTimerRef.current);
     setShowRewardedAdModal(false);
@@ -161,7 +198,6 @@ export default function GameScreen({ navigation }) {
 
     logGameEvent('ad_reward_claimed', { resulting_wallet_total: updatedCoins });
 
-    // Success notification
     Alert.alert(
       "🪙 Reward Claimed!",
       "Thank you for watching! +1 Coin has been securely added to your layout balance.",
@@ -175,14 +211,14 @@ export default function GameScreen({ navigation }) {
       moves_made_before_reset: history.length
     });
 
-    // Play start sound on game reset
     playGameStateSound('start', soundEnabled, hapticEnabled);
 
     setNewTileCoord(null);
     setMergedCoords([]);
     setShowConfetti(false);
     setIsDeleteMode(false);
-    setShowGameOverScreen(false); // Close Game Over layout screen if open
+    setShowGameOverScreen(false);
+    setShowInterstitial(false);
 
     const newGrid = initializeGrid();
     setGrid(newGrid);
@@ -192,8 +228,7 @@ export default function GameScreen({ navigation }) {
   };
 
   const handleMove = async (direction) => {
-    // Block swiping if player is selecting a tile to delete, watching an ad, or if game is over
-    if (isDeleteMode || showRewardedAdModal || showGameOverScreen) return;
+    if (isDeleteMode || showRewardedAdModal || showGameOverScreen || showInterstitial) return;
 
     const oldGrid = JSON.parse(JSON.stringify(grid));
     const result = moveGrid(grid, direction);
@@ -209,7 +244,6 @@ export default function GameScreen({ navigation }) {
       let milestoneReached = false;
       let topMergedValue = 0;
 
-      // 1. Map out all values that already existed on the board before the move
       const preExistingTiles = [];
       oldGrid.forEach(row => row.forEach(cell => {
         if (cell > 0) preExistingTiles.push(cell);
@@ -242,7 +276,6 @@ export default function GameScreen({ navigation }) {
         playSwipeSound(direction, soundEnabled, hapticEnabled);
       }
 
-      // --- IN-GAME ECONOMY TESTING VALUE (REVERT TO 2048 IN PROD) ---
       if (topMergedValue >= 128) {
         const updatedCoins = coins + 1;
         await updateWalletCoins(updatedCoins);
@@ -294,7 +327,9 @@ export default function GameScreen({ navigation }) {
           setShowNameModal(true);
         }
 
-        setShowGameOverScreen(true);
+        // 🚀 TRIGGER INTERSTITIAL AD INTERMEDIATE STEP FIRST
+        logGameEvent('ad_request', { type: 'interstitial_gameover' });
+        setShowInterstitial(true);
       }
     }
   };
@@ -430,7 +465,6 @@ export default function GameScreen({ navigation }) {
             <Text style={styles.scoreLabel}>BEST</Text>
             <Text style={styles.scoreValue}>{highScore}</Text>
           </View>
-          {/* TAP TO WATCH AD OPTION EMBEDDED INTO COIN WALLET LOOKUP */}
           <TouchableOpacity 
             style={[styles.scoreContainer, styles.coinWalletContainer]}
             onPress={() => {
@@ -603,7 +637,6 @@ export default function GameScreen({ navigation }) {
               <Text style={styles.adVideoSubtitleText}>Do not close this window to claim reward.</Text>
             </View>
 
-            {/* ACTION STATUS BUTTON: LOCKS UNTIL COUNTDOWN REACHES ZERO */}
             <TouchableOpacity 
               style={[styles.adRewardClaimBtn, adCountdown > 0 && styles.adRewardClaimBtnDisabled]}
               onPress={claimAdCoinReward}
@@ -615,6 +648,14 @@ export default function GameScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         </View>
+      )}
+
+      {/* --- NEW: FULL SCREEN INTERSTITIAL AD INTERCEPT LAYER --- */}
+      {showInterstitial && (
+        <InterstitialAdMock onClose={() => {
+          setShowInterstitial(false);
+          setShowGameOverScreen(true); // Proceed to Game Over layout once dismissed
+        }} />
       )}
 
       {/* --- FULL SCREEN GAME OVER SCREEN OVERLAY --- */}
@@ -635,7 +676,6 @@ export default function GameScreen({ navigation }) {
               </View>
             </View>
 
-            {/* AD INCENTIVE LINK ADDED STRAIGHT ONTO GAME OVER FAILCARD SHEET */}
             {coins < 1 && (
               <TouchableOpacity style={styles.gameOverWatchAdBtn} onPress={() => { setShowGameOverScreen(false); launchRewardedAdVideo(); }}>
                 <Text style={styles.gameOverWatchAdBtnText}>📺 Watch Video for Free +1 Coin</Text>
@@ -654,7 +694,7 @@ export default function GameScreen({ navigation }) {
                 onPress={handleUndo}
                 disabled={history.length === 0}
               >
-                <Text style={[styles.powerUpBtnText, history.length === 0 && styles.disabledBtnText]}>
+                <Text style={styles.powerUpBtnText}>
                   ↩ Undo (1 🪙)
                 </Text>
               </TouchableOpacity>
@@ -663,7 +703,6 @@ export default function GameScreen({ navigation }) {
                 style={[
                   styles.gameOverBtn,
                   styles.deleteBtn
-                  // 🚀 FIXED: Disabled flag removed completely so click handler fires even when coins are 0!
                 ]} 
                 onPress={triggerGameOverDeleteMode}
               >
@@ -750,7 +789,6 @@ const styles = StyleSheet.create({
   closeSettingsBtn: { marginTop: 24, paddingVertical: 10, width: '100%', alignItems: 'center' },
   closeSettingsText: { color: '#776e65', fontSize: 15, fontWeight: 'bold', opacity: 0.8 },
 
-  // --- REWARDED CINEMA VIDEO LAYOUT CARDS STYLES ---
   adVideoCard: { width: width * 0.88, backgroundColor: '#1a1a1a', borderRadius: 12, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
   adVideoBadge: { color: '#aaa', fontSize: 10, fontWeight: 'bold', letterSpacing: 2, marginBottom: 14 },
   adVideoScreenPlaceholder: { width: '100%', height: 180, backgroundColor: '#0b0b0b', borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 20, paddingHorizontal: 20 },
@@ -760,6 +798,17 @@ const styles = StyleSheet.create({
   adRewardClaimBtn: { width: '100%', backgroundColor: '#e1b024', paddingVertical: 15, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   adRewardClaimBtnDisabled: { backgroundColor: '#333' },
   adRewardClaimBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 15 },
+
+  // --- NEW STYLES FOR THE INTERSTITIAL FULL-SCREEN MOCK CARD ---
+  interstitialOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#2c3e50', justifyContent: 'center', alignItems: 'center', zIndex: 4000 },
+  interstitialContainer: { width: width * 0.9, backgroundColor: '#ffffff', padding: 30, borderRadius: 16, alignItems: 'center', elevation: 20 },
+  interstitialBadge: { color: '#7f8c8d', fontSize: 11, fontWeight: 'bold', letterSpacing: 1.5, marginBottom: 15 },
+  interstitialMainIcon: { fontSize: 60, marginBottom: 15 },
+  interstitialTitle: { fontSize: 22, fontWeight: 'bold', color: '#2c3e50', textAlign: 'center', marginBottom: 8 },
+  interstitialSubtext: { fontSize: 14, color: '#95a5a6', textAlign: 'center', marginBottom: 30, paddingHorizontal: 10 },
+  interstitialCloseBtn: { width: '100%', backgroundColor: '#e74c3c', paddingVertical: 14, borderRadius: 8, alignItems: 'center' },
+  interstitialCloseBtnDisabled: { backgroundColor: '#bdc3c7' },
+  interstitialCloseText: { color: '#ffffff', fontWeight: 'bold', fontSize: 16 },
 
   gameOverCard: { width: width * 0.85, backgroundColor: '#faf8ef', padding: 24, borderRadius: 12, alignItems: 'center', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
   gameOverEmoji: { fontSize: 42, marginBottom: 5 },
