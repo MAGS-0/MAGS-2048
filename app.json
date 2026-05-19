@@ -1,44 +1,28 @@
 {
   "expo": {
     "name": "MAGS 2048",
-    "slug": "mags-2048",
+    "slug": "MAGS-2048",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "newArchEnabled": true,
     "splash": {
+      "image": "./assets/splash-image.png",
       "resizeMode": "contain",
       "backgroundColor": "#faf8ef"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#faf8ef"
-      },
-      "package": "com.indiegames.mags2048"
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "extra": {
-      "eas": {
-        "projectId": "280d8137-2895-45a1-a0ee-2d1298f78502"
       }
     },
-    "plugins": [
-      [
-        "react-native-google-mobile-ads",
-        {
-          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
-          "iosAppId": "ca-app-pub-3940256099942544~1458002511"
-        }
-      ]
-    ]
+    "web": {
+      "favIcon": "./assets/favicon.png"
+    }
   }
 }

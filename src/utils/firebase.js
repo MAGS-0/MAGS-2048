@@ -92,3 +92,19 @@ export const fetchUserRank = async (username, gridType = '4x4') => {
     return null;
   }
 };
+// Add this to the very bottom of your src/utils/firebase.js file
+import { ref, get } from 'firebase/database';
+
+export const fetchRemoteBaseCoins = async () => {
+  try {
+    // Looks for a simple 'config/daily_base_coin' entry in your Realtime Database
+    const dbRef = ref(database, 'config/daily_base_coin');
+    const snapshot = await get(dbRef);
+    if (snapshot.exists()) {
+      return parseInt(snapshot.val(), 10);
+    }
+  } catch (error) {
+    console.log("Firebase Remote Config offline, utilizing standard baseline fallback.");
+  }
+  return 1; // High-resilient fallback default
+};

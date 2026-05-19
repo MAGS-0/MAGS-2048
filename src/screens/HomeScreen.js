@@ -1,98 +1,438 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Dimensions } from 'react-native';
-import { getUsername, saveUsername } from '../utils/storage';
+import React, { useEffect, useState, useRef } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, Animated } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getUsername, saveUsername, getCoins, saveCoins } from '../utils/storage';
 import { useAds } from '../context/AdContext';
+import { fetchRemoteBaseCoins } from '../utils/firebase';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 export default function HomeScreen({ navigation }) {
-  const { showInterstitial } = useAds();
+  const { showInterstitial, setAdsRemovedStatus } = useAds();
   const [currentUser, setCurrentUser] = useState(null);
+  
+  // --- WALLET INVENTORY ACCUMULATOR ---
+  const [walletCoins, setWalletCoins] = useState(0);
+  
+  // --- ADVANCED CALENDAR STREAK LOGIC STATES ---
+  const [isRewardClaimed, setIsRewardClaimed] = useState(false);
+  const [currentStreak, setCurrentStreak] = useState(1);
+  const [baseCoinAmount, setBaseCoinAmount] = useState(1);
+  const [countdownText, setCountdownText] = useState('');
+  const [showRewardAdModal, setShowRewardAdModal] = useState(false);
+  const [adCountdown, setAdCountdown] = useState(5);
+  
+  // --- NATIVE ANIMATION INTERPOLATION CHANNELS ---
+  const coinFlyAnimY = useRef(new Animated.Value(0)).current;
+  const coinFlyAnimX = useRef(new Animated.Value(0)).current; 
+  const coinFlyAnimOpacity = useRef(new Animated.Value(0)).current;
+  const walletScaleAnim = useRef(new Animated.Value(1)).current;
+
+  const countdownTimerRef = useRef(null);
+  const adTimerRef = useRef(null);
 
   useEffect(() => {
-    const initializeUser = async () => {
-      // Safely ensure local storage matches your database profile name
+    const initializeDashboard = async () => {
       await saveUsername('Sum');
       const name = await getUsername();
       setCurrentUser(name);
+
+      const totalCoins = await getCoins() || 0;
+      setWalletCoins(totalCoins);
+
+      const remoteCoins = await fetchRemoteBaseCoins();
+      setBaseCoinAmount(remoteCoins);
+
+      await evaluateProgressiveStreakRules();
     };
 
-    initializeUser();
-
-    // Refresh username text whenever you navigate back to the Home Screen
-    const unsubscribe = navigation.addListener('focus', initializeUser);
-    return unsubscribe;
+    initializeDashboard();
+    const unsubscribe = navigation.addListener('focus', initializeDashboard);
+    
+    return () => {
+      unsubscribe();
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      if (adTimerRef.current) clearInterval(adTimerRef.current);
+    };
   }, [navigation]);
+
+  // --- ENGINE CORE: STREAK EVALUATION ---
+  const evaluateProgressiveStreakRules = async () => {
+    try {
+      const lastClaimedTimestamp = await AsyncStorage.getItem('mags_2048_last_daily_claim');
+      const savedStreakStr = await AsyncStorage.getItem('mags_2048_daily_streak_count');
+      
+      let streak = savedStreakStr ? parseInt(savedStreakStr, 10) : 1;
+      if (streak > 7) streak = 1;
+
+      if (!lastClaimedTimestamp) {
+        setCurrentStreak(1);
+        setIsRewardClaimed(false);
+        return;
+      }
+
+      const now = new Date();
+      const lastClaimDate = new Date(parseInt(lastClaimedTimestamp, 10));
+
+      const isSameDay = 
+        lastClaimDate.getDate() === now.getDate() &&
+        lastClaimDate.getMonth() === now.getMonth() &&
+        lastClaimDate.getFullYear() === now.getFullYear();
+
+      if (isSameDay) {
+        setCurrentStreak(streak);
+        setIsRewardClaimed(true);
+        startMidnightCountdown();
+        return;
+      }
+
+      const yesterday = new Date();
+      yesterday.setDate(now.getDate() - 1);
+      
+      const isYesterday = 
+        lastClaimDate.getDate() === yesterday.getDate() &&
+        lastClaimDate.getMonth() === yesterday.getMonth() &&
+        lastClaimDate.getFullYear() === yesterday.getFullYear();
+
+      if (isYesterday) {
+        setCurrentStreak(streak);
+        setIsRewardClaimed(false);
+      } else {
+        setCurrentStreak(1);
+        await AsyncStorage.setItem('mags_2048_daily_streak_count', '1');
+        setIsRewardClaimed(false);
+      }
+    } catch (e) {
+      console.log(e);
+    }
+  };
+
+  const calculateRewardPayout = (streakValue) => {
+    if (streakValue >= 7) return baseCoinAmount * 5; 
+    if (streakValue >= 5) return baseCoinAmount * 2; 
+    return baseCoinAmount; 
+  };
+
+  const startMidnightCountdown = () => {
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+
+    const updateTimer = () => {
+      const now = new Date();
+      const midnight = new Date();
+      midnight.setHours(24, 0, 0, 0);
+
+      const difference = midnight - now;
+      if (difference <= 0) {
+        clearInterval(countdownTimerRef.current);
+        setIsRewardClaimed(false);
+        setCountdownText('');
+        evaluateProgressiveStreakRules();
+        return;
+      }
+
+      const hours = Math.floor(difference / (1000 * 60 * 60));
+      const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+
+      setCountdownText(
+        `${hours < 10 ? '0' : ''}${hours}h ${minutes < 10 ? '0' : ''}${minutes}m ${seconds < 10 ? '0' : ''}${seconds}s`
+      );
+    };
+
+    updateTimer();
+    countdownTimerRef.current = setInterval(updateTimer, 1000);
+  };
+
+  // --- TRIGGER CALIBRATED DIAGONAL FLYING ANIMATION ---
+  const triggerCoinEarningAnimation = () => {
+    coinFlyAnimY.setValue(0);
+    coinFlyAnimX.setValue(0); 
+    coinFlyAnimOpacity.setValue(1);
+
+    Animated.parallel([
+      // Shoot up perfectly to the horizontal level of the pill container
+      Animated.timing(coinFlyAnimY, {
+        toValue: -height * 0.27,
+        duration: 850,
+        useNativeDriver: true,
+      }),
+      // Move rightward to rest squarely over the coin icon inside the pill
+      Animated.timing(coinFlyAnimX, {
+        toValue: width * 0.36,
+        duration: 850,
+        useNativeDriver: true,
+      }),
+      // Fade out cleanly at contact
+      Animated.sequence([
+        Animated.delay(700),
+        Animated.timing(coinFlyAnimOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        })
+      ])
+    ]).start(async () => {
+      // Scale pop effect on the score badge
+      Animated.sequence([
+        Animated.timing(walletScaleAnim, { toValue: 1.25, duration: 90, useNativeDriver: true }),
+        Animated.timing(walletScaleAnim, { toValue: 1.0, duration: 110, useNativeDriver: true })
+      ]).start();
+
+      const currentWallet = await getCoins() || 0;
+      setWalletCoins(currentWallet);
+    });
+  };
+
+  const commitRewardToWallet = async (isDoubled) => {
+    try {
+      const baselineReward = calculateRewardPayout(currentStreak);
+      const finalCoinPayout = isDoubled ? baselineReward * 2 : baselineReward;
+
+      const walletBalance = await getCoins() || 0;
+      const newBalance = walletBalance + finalCoinPayout;
+      await saveCoins(newBalance);
+
+      await AsyncStorage.setItem('mags_2048_last_daily_claim', Date.now().toString());
+      
+      let nextStreak = currentStreak + 1;
+      if (nextStreak > 7) nextStreak = 1; 
+      await AsyncStorage.setItem('mags_2048_daily_streak_count', nextStreak.toString());
+      setCurrentStreak(nextStreak);
+
+      setIsRewardClaimed(true);
+      startMidnightCountdown();
+
+      triggerCoinEarningAnimation();
+
+    } catch (e) {
+      Alert.alert("Transaction Error", "Could not write coin reward balance.");
+    }
+  };
+
+  const launchRewardedAdDoubleFlow = () => {
+    setAdCountdown(5);
+    setShowRewardAdModal(true);
+
+    adTimerRef.current = setInterval(() => {
+      setAdCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(adTimerRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const claimDoubleAdReward = async () => {
+    if (adCountdown > 0) return;
+    clearInterval(adTimerRef.current);
+    setShowRewardAdModal(false);
+    await commitRewardToWallet(true); 
+  };
 
   const handlePlayPress = () => {
     showInterstitial();
     navigation.navigate('Game');
   };
 
+  const handleDevReset = async () => {
+    try {
+      await setAdsRemovedStatus(false);
+      await AsyncStorage.removeItem('mags_2048_coins');
+      await AsyncStorage.removeItem('mags_2048_last_daily_claim');
+      await AsyncStorage.removeItem('mags_2048_daily_streak_count');
+      
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      if (adTimerRef.current) clearInterval(adTimerRef.current);
+      
+      setIsRewardClaimed(false);
+      setCurrentStreak(1);
+      setWalletCoins(0);
+      setCountdownText('');
+      
+      Alert.alert("🛠️ Test Ecosystem Reset", "All parameters flushed cleanly.");
+    } catch (e) {
+      console.log(e);
+    }
+  };
+
+  const immediateClaimValue = calculateRewardPayout(currentStreak);
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>MAGS 2048</Text>
       
-      {currentUser && (
-        <Text style={styles.welcomeText}>Welcome back, {currentUser}!</Text>
-      )}
+      <View style={styles.topHeaderControlBar}>
+        <View style={styles.brandingNode}>
+          <Text style={styles.headerTitleBrand}>MAGS 2048</Text>
+          {currentUser && <Text style={styles.welcomeSubtitle}>User: {currentUser}</Text>}
+        </View>
 
-      <TouchableOpacity 
-        style={styles.button} 
-        onPress={handlePlayPress}
-      >
+        <Animated.View style={[styles.walletStatusPill, { transform: [{ scale: walletScaleAnim }] }]}>
+          <Text style={styles.walletTokenSymbol}>🪙</Text>
+          <Text style={styles.walletBalanceText}>{walletCoins}</Text>
+        </Animated.View>
+      </View>
+
+      <View style={styles.calendarCard}>
+        <View style={styles.calendarHeaderRow}>
+          <Text style={styles.calendarCardTitle}>📆 DAILY CALENDAR</Text>
+          <Text style={styles.streakBadgeText}>DAY {currentStreak} STREAK</Text>
+        </View>
+
+        <View style={styles.dotsRowContainer}>
+          {[1, 2, 3, 4, 5, 6, 7].map((dayIndex) => {
+            const isCurrent = dayIndex === currentStreak;
+            const isPast = dayIndex < currentStreak;
+            
+            let dotStyle = styles.futureDot;
+            if (isCurrent) dotStyle = styles.activeDot;
+            if (isPast || (isRewardClaimed && isCurrent)) dotStyle = styles.completedDot;
+
+            let labelSymbol = `+${calculateRewardPayout(dayIndex)}`;
+            if (dayIndex === 7) labelSymbol = "👑🔥";
+
+            return (
+              <View key={`calendar-dot-node-${dayIndex}`} style={styles.dotNodeColumn}>
+                <View style={[styles.baseDotLayout, dotStyle]}>
+                  <Text style={[styles.dotLabelValue, isCurrent && styles.activeDotText]}>
+                    {isPast || (isRewardClaimed && isCurrent) ? "✓" : labelSymbol}
+                  </Text>
+                </View>
+                <Text style={styles.dotSubTextLabel}>D{dayIndex}</Text>
+              </View>
+            );
+          })}
+        </View>
+
+        {isRewardClaimed ? (
+          <View style={styles.claimedFeedbackWrapper}>
+            <Text style={styles.claimedMainText}>✓ BONUS CLAIMED TODAY</Text>
+            <Text style={styles.claimedTimeSubText}>Next gift drops in: {countdownText}</Text>
+          </View>
+        ) : (
+          <View style={styles.actionButtonsStack}>
+            <TouchableOpacity style={styles.primaryClaimBtn} onPress={() => commitRewardToWallet(false)}>
+              <Text style={styles.primaryClaimBtnText}>
+                Claim Single (+{immediateClaimValue} 🪙)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.adClaimBtn} onPress={launchRewardedAdDoubleFlow}>
+              <Text style={styles.adClaimBtnText}>
+                🎬 DOUBLE REWARD (+{immediateClaimValue * 2} 🪙)
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* --- ADJUSTED FLYING COIN TARGET DISPLAY --- */}
+        <Animated.View 
+          style={[
+            styles.floatingAnimatedCoinItem, 
+            { 
+              opacity: coinFlyAnimOpacity,
+              transform: [
+                { translateY: coinFlyAnimY },
+                { translateX: coinFlyAnimX }
+              ] 
+            }
+          ]}
+        >
+          <Text style={{ fontSize: 32 }}>🪙</Text>
+        </Animated.View>
+      </View>
+
+      <TouchableOpacity style={styles.button} onPress={handlePlayPress}>
         <Text style={styles.buttonText}>PLAY GAME 4x4</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity 
-        style={[styles.button, styles.secondaryButton]} 
-        onPress={() => navigation.navigate('Leaderboard')}
-      >
+      <TouchableOpacity style={[styles.button, styles.secondaryButton]} onPress={() => navigation.navigate('Leaderboard')}>
         <Text style={styles.secondaryButtonText}>LEADERBOARD</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity style={styles.devResetButton} onPress={handleDevReset}>
+        <Text style={styles.devResetText}>🔧 RESET STREAK MATRIX (TEST PHASE UTILITY)</Text>
+      </TouchableOpacity>
+
+      {showRewardAdModal && (
+        <View style={styles.adOverlayContainer}>
+          <View style={styles.adVideoBoxCard}>
+            <Text style={styles.adVideoBadge}>SPONSOR AD MULTIPLIER</Text>
+            <View style={styles.videoContentBox}>
+              <Text style={styles.videoPlayerEmoji}>🎬</Text>
+              <Text style={styles.videoMainTitle}>MAGS Ad Engine Stream</Text>
+              <Text style={styles.videoSubTitle}>Watch this promo to unlock 2x reward coins!</Text>
+            </View>
+            <TouchableOpacity 
+              style={[styles.claimAdBtn, adCountdown > 0 && styles.claimAdBtnDisabled]}
+              onPress={claimDoubleAdReward}
+              disabled={adCountdown > 0}
+            >
+              <Text style={styles.claimAdText}>
+                {adCountdown > 0 ? `⏳ Multiplier unlocks in ${adCountdown}s...` : '🎁 DOUBLE MY COINS NOW'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#faf8ef', 
-    alignItems: 'center', 
-    justifyContent: 'center' 
-  },
-  title: { 
-    fontSize: 48, 
-    fontWeight: 'bold', 
-    color: '#776e65', 
-    marginBottom: 10 
-  },
-  welcomeText: {
-    fontSize: 18,
-    color: '#776e65',
-    marginBottom: 40,
-    fontWeight: '500'
-  },
-  button: { 
-    backgroundColor: '#8f7a66', 
-    paddingHorizontal: 40, 
-    paddingVertical: 15, 
-    borderRadius: 5,
-    width: width * 0.7,
-    alignItems: 'center',
-    marginBottom: 15
-  },
-  buttonText: { 
-    color: '#ffffff', 
-    fontSize: 18, 
-    fontWeight: 'bold' 
-  },
-  secondaryButton: {
-    backgroundColor: '#bbada0',
-  },
-  secondaryButtonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: 'bold'
-  }
+  container: { flex: 1, backgroundColor: '#faf8ef', alignItems: 'center', justifyContent: 'flex-start', paddingTop: height * 0.08 },
+  topHeaderControlBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: width * 0.9, marginBottom: height * 0.05, paddingHorizontal: 4 },
+  brandingNode: { alignItems: 'flex-start' },
+  headerTitleBrand: { fontSize: 32, fontWeight: 'bold', color: '#776e65' },
+  welcomeSubtitle: { fontSize: 13, color: '#a39485', fontWeight: '500', marginTop: 2 },
+  walletStatusPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#bbada0', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: '#fff' },
+  walletTokenSymbol: { fontSize: 16, marginRight: 6 },
+  walletBalanceText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
+
+  calendarCard: { position: 'relative', width: width * 0.9, backgroundColor: '#eee4da', padding: 18, borderRadius: 12, marginBottom: 35, borderWidth: 1, borderColor: '#dcd1c4', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3 },
+  calendarHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(119,110,101,0.12)', paddingBottom: 8 },
+  calendarCardTitle: { fontSize: 11, fontWeight: 'bold', color: '#776e65', letterSpacing: 0.3 },
+  streakBadgeText: { fontSize: 10, fontWeight: 'bold', backgroundColor: '#8f7a66', color: '#fff', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  
+  dotsRowContainer: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 20 },
+  dotNodeColumn: { alignItems: 'center', flex: 1 },
+  baseDotLayout: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#dcd1c4' },
+  futureDot: { backgroundColor: '#faf8ef' },
+  activeDot: { backgroundColor: '#e1b024', borderWidth: 2, borderColor: '#ffffff' },
+  completedDot: { backgroundColor: '#bbada0' },
+  dotLabelValue: { fontSize: 10, fontWeight: 'bold', color: '#776e65' },
+  activeDotText: { color: '#ffffff', fontSize: 11 },
+  dotSubTextLabel: { fontSize: 9, fontWeight: 'bold', color: '#a39485', marginTop: 4 },
+
+  claimedFeedbackWrapper: { alignItems: 'center', paddingVertical: 8 },
+  claimedMainText: { color: '#a39485', fontWeight: 'bold', fontSize: 14, letterSpacing: 0.5 },
+  claimedTimeSubText: { color: '#776e65', fontSize: 11, marginTop: 4, fontWeight: '500' },
+
+  actionButtonsStack: { width: '100%' },
+  primaryClaimBtn: { backgroundColor: '#bbada0', paddingVertical: 10, borderRadius: 6, alignItems: 'center', marginBottom: 8 },
+  primaryClaimBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 13 },
+  adClaimBtn: { backgroundColor: '#e1b024', paddingVertical: 12, borderRadius: 6, alignItems: 'center', borderWidth: 1, borderColor: '#cca01d' },
+  adClaimBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14, letterSpacing: 0.2 },
+
+  floatingAnimatedCoinItem: { position: 'absolute', bottom: 40, left: '44%', zIndex: 999 },
+
+  button: { backgroundColor: '#8f7a66', paddingHorizontal: 40, paddingVertical: 15, borderRadius: 6, width: width * 0.75, alignItems: 'center', marginBottom: 15 },
+  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  secondaryButton: { backgroundColor: '#bbada0' },
+  secondaryButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  
+  devResetButton: { marginTop: 20, padding: 8, borderWidth: 1, borderColor: '#e74c3c', borderRadius: 6, backgroundColor: 'rgba(231, 76, 60, 0.03)' },
+  devResetText: { color: '#e74c3c', fontSize: 9, fontWeight: 'bold', letterSpacing: 0.5 },
+
+  adOverlayContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.88)', justifyContent: 'center', alignItems: 'center', zIndex: 9999 },
+  adVideoBoxCard: { width: width * 0.85, backgroundColor: '#1a1a1a', padding: 20, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
+  adVideoBadge: { color: '#888', fontSize: 10, fontWeight: 'bold', letterSpacing: 1.5, marginBottom: 12 },
+  videoContentBox: { width: '100%', height: 150, backgroundColor: '#000', borderRadius: 6, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  videoPlayerEmoji: { fontSize: 40, marginBottom: 8 },
+  videoMainTitle: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+  videoSubTitle: { color: '#666', fontSize: 11, marginTop: 4, textAlign: 'center', paddingHorizontal: 15 },
+  claimAdBtn: { width: '100%', backgroundColor: '#e1b024', paddingVertical: 14, borderRadius: 6, alignItems: 'center' },
+  claimAdBtnDisabled: { backgroundColor: '#333' },
+  claimAdText: { color: '#fff', fontWeight: 'bold', fontSize: 14 }
 });

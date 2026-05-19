@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AdContext = createContext();
 
@@ -18,8 +19,24 @@ try {
 export const AdProvider = ({ children }) => {
   const [interstitial, setInterstitial] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  
+  // --- NEW STATE TO TRACK PREMIUM AD-FREE STATUS ---
+  const [isAdsRemoved, setIsAdsRemoved] = useState(false);
 
   useEffect(() => {
+    // Load the user's premium purchase status when the app boots up
+    const loadPremiumStatus = async () => {
+      try {
+        const value = await AsyncStorage.getItem('mags_2048_premium_ads_removed');
+        if (value === 'true') {
+          setIsAdsRemoved(true);
+        }
+      } catch (e) {
+        console.log("Failed to look up local ad premium storage flags:", e);
+      }
+    };
+    loadPremiumStatus();
+
     if (InterstitialAd && TestIds) {
       // Uses standard Google Test ID to prevent build bans or failures
       const adInstance = InterstitialAd.createForAdRequest(TestIds.INTERSTITIAL);
@@ -43,7 +60,23 @@ export const AdProvider = ({ children }) => {
     }
   }, []);
 
+  // --- NEW FUNCTION TO SET AND SAVE PREMIUM PURCHASE TIER ---
+  const setAdsRemovedStatus = async (status) => {
+    try {
+      setIsAdsRemoved(status);
+      await AsyncStorage.setItem('mags_2048_premium_ads_removed', status ? 'true' : 'false');
+    } catch (e) {
+      console.log("Failed to save ad premium status flag:", e);
+    }
+  };
+
   const showInterstitial = () => {
+    // If user purchased "Remove Ads", immediately block the ad from showing
+    if (isAdsRemoved) {
+      console.log("Premium Active: Interstitial blocked.");
+      return;
+    }
+
     if (loaded && interstitial) {
       interstitial.show();
     } else {
@@ -52,7 +85,7 @@ export const AdProvider = ({ children }) => {
   };
 
   return (
-    <AdContext.Provider value={{ showInterstitial }}>
+    <AdContext.Provider value={{ showInterstitial, isAdsRemoved, setAdsRemovedStatus }}>
       {children}
     </AdContext.Provider>
   );

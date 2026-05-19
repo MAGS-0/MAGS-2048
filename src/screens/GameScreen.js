@@ -6,19 +6,20 @@ import { submitGlobalScore } from '../utils/firebase';
 import Tile from '../components/Tile';
 import Confetti from '../components/Confetti';
 import UsernameModal from '../components/UsernameModal';
+import { useAds } from '../context/AdContext'; // --- IMPORT GLOBAL AD LINK ---
 
-// Safely display mock fallback layout if AdMob banner isn't natively bound
-const BannerAdMock = ({ onFailed }) => (
-  <View style={styles.adBanner}>
+// Safely display mock fallback layout linked to the premium storefront
+const BannerAdMock = ({ onFailed, navigation }) => (
+  <TouchableOpacity style={styles.adBanner} onPress={() => navigation.navigate('Shop')}>
     <Text style={styles.adTag}>Ad Mock</Text>
     <Text style={styles.adBannerText}>Remove Ads + Daily Coins — $2.99</Text>
-    <TouchableOpacity style={styles.adCloseBtn} onPress={onFailed}>
+    <TouchableOpacity style={styles.adCloseBtn} onPress={(e) => { e.stopPropagation(); onFailed(); }}>
       <Text style={styles.adCloseText}>×</Text>
     </TouchableOpacity>
-  </View>
+  </TouchableOpacity>
 );
 
-// --- NEW FULL-SCREEN INTERSTITIAL AD MOCK COMPONENT ---
+// --- FULL-SCREEN INTERSTITIAL AD MOCK COMPONENT ---
 const InterstitialAdMock = ({ onClose }) => {
   const [countdown, setCountdown] = useState(3);
   const timerRef = useRef(null);
@@ -73,6 +74,9 @@ const { width } = Dimensions.get('window');
 const CELL_SIZE = (width - 40) / 4;
 
 export default function GameScreen({ navigation }) {
+  // --- CONSUME GLOBAL PREMIUM ADS STATUS ---
+  const { isAdsRemoved, showInterstitial: triggerNativeInterstitial } = useAds();
+
   const [grid, setGrid] = useState(initializeGrid());
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
@@ -148,6 +152,17 @@ export default function GameScreen({ navigation }) {
 
     return () => clearInterval(adTimerRef.current);
   }, []);
+
+  // Sync state if user returns from shop with newly purchased coins
+  useEffect(() => {
+    const syncCoins = navigation.addListener('focus', async () => {
+      const storedCoins = await getCoins();
+      if (storedCoins !== null) {
+        setCoins(storedCoins);
+      }
+    });
+    return syncCoins;
+  }, [navigation]);
 
   const triggerScoreAnimation = () => {
     Animated.sequence([
@@ -327,9 +342,13 @@ export default function GameScreen({ navigation }) {
           setShowNameModal(true);
         }
 
-        // 🚀 TRIGGER INTERSTITIAL AD INTERMEDIATE STEP FIRST
-        logGameEvent('ad_request', { type: 'interstitial_gameover' });
-        setShowInterstitial(true);
+        // 🚀 BYPASS CHECK: If premium active, jump straight to Game Over screen layout
+        if (isAdsRemoved) {
+          setShowGameOverScreen(true);
+        } else {
+          logGameEvent('ad_request', { type: 'interstitial_gameover' });
+          setShowInterstitial(true);
+        }
       }
     }
   };
@@ -486,8 +505,9 @@ export default function GameScreen({ navigation }) {
 
       {/* AD CONTAINER SECTION */}
       <View style={styles.adWrapper}>
-        {showAd && (
-          <BannerAdMock onFailed={() => setShowAd(false)} />
+        {/* Hides the ad block instantly if premium package is owned */}
+        {!isAdsRemoved && showAd && (
+          <BannerAdMock onFailed={() => setShowAd(false)} navigation={navigation} />
         )}
       </View>
 
@@ -614,6 +634,11 @@ export default function GameScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
+            {/* --- LINK FROM SETTINGS CARD MENU TO SHOP SCREEN --- */}
+            <TouchableOpacity style={[styles.menuItemBtn, { backgroundColor: '#e1b024' }]} onPress={() => { setShowSettingsModal(false); navigation.navigate('Shop'); }}>
+              <Text style={styles.menuItemText}>👑 Open Game Shop</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity style={styles.menuItemBtn} onPress={() => Alert.alert("How to Play", "Slide matching number blocks into each other to add them up and reach the 2048 tile!")}>
               <Text style={styles.menuItemText}>📖 How to Play Tutorial</Text>
             </TouchableOpacity>
@@ -650,11 +675,11 @@ export default function GameScreen({ navigation }) {
         </View>
       )}
 
-      {/* --- NEW: FULL SCREEN INTERSTITIAL AD INTERCEPT LAYER --- */}
+      {/* --- FULL SCREEN INTERSTITIAL AD INTERCEPT LAYER --- */}
       {showInterstitial && (
         <InterstitialAdMock onClose={() => {
           setShowInterstitial(false);
-          setShowGameOverScreen(true); // Proceed to Game Over layout once dismissed
+          setShowGameOverScreen(true);
         }} />
       )}
 
@@ -799,7 +824,6 @@ const styles = StyleSheet.create({
   adRewardClaimBtnDisabled: { backgroundColor: '#333' },
   adRewardClaimBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 15 },
 
-  // --- NEW STYLES FOR THE INTERSTITIAL FULL-SCREEN MOCK CARD ---
   interstitialOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#2c3e50', justifyContent: 'center', alignItems: 'center', zIndex: 4000 },
   interstitialContainer: { width: width * 0.9, backgroundColor: '#ffffff', padding: 30, borderRadius: 16, alignItems: 'center', elevation: 20 },
   interstitialBadge: { color: '#7f8c8d', fontSize: 11, fontWeight: 'bold', letterSpacing: 1.5, marginBottom: 15 },
