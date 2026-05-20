@@ -8,8 +8,12 @@ import { fetchRemoteBaseCoins } from '../utils/firebase';
 const { width, height } = Dimensions.get('window');
 
 export default function HomeScreen({ navigation }) {
-  const { showInterstitial, setAdsRemovedStatus } = useAds();
+  // Destructure adsRemoved instead of missing parameters to match AdContext
+  const { showInterstitial, setAdsRemovedStatus, adsRemoved } = useAds();
   const [currentUser, setCurrentUser] = useState(null);
+  
+  // Local state to track if the premium pack has been purchased
+  const [isPremiumUser, setIsPremiumUser] = useState(false);
   
   // --- WALLET INVENTORY ACCUMULATOR ---
   const [walletCoins, setWalletCoins] = useState(0);
@@ -43,6 +47,10 @@ export default function HomeScreen({ navigation }) {
       const remoteCoins = await fetchRemoteBaseCoins();
       setBaseCoinAmount(remoteCoins);
 
+      // Check storage directly for premium/no-ads configuration
+      const adsRemovedValue = await AsyncStorage.getItem('mags_2048_ads_removed');
+      setIsPremiumUser(adsRemovedValue === 'true' || adsRemoved === true);
+
       await evaluateProgressiveStreakRules();
     };
 
@@ -54,7 +62,7 @@ export default function HomeScreen({ navigation }) {
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       if (adTimerRef.current) clearInterval(adTimerRef.current);
     };
-  }, [navigation]);
+  }, [navigation, adsRemoved]);
 
   // --- ENGINE CORE: STREAK EVALUATION ---
   const evaluateProgressiveStreakRules = async () => {
@@ -150,19 +158,16 @@ export default function HomeScreen({ navigation }) {
     coinFlyAnimOpacity.setValue(1);
 
     Animated.parallel([
-      // Shoot up perfectly to the horizontal level of the pill container
       Animated.timing(coinFlyAnimY, {
         toValue: -height * 0.27,
         duration: 850,
         useNativeDriver: true,
       }),
-      // Move rightward to rest squarely over the coin icon inside the pill
       Animated.timing(coinFlyAnimX, {
         toValue: width * 0.36,
         duration: 850,
         useNativeDriver: true,
       }),
-      // Fade out cleanly at contact
       Animated.sequence([
         Animated.delay(700),
         Animated.timing(coinFlyAnimOpacity, {
@@ -172,7 +177,6 @@ export default function HomeScreen({ navigation }) {
         })
       ])
     ]).start(async () => {
-      // Scale pop effect on the score badge
       Animated.sequence([
         Animated.timing(walletScaleAnim, { toValue: 1.25, duration: 90, useNativeDriver: true }),
         Animated.timing(walletScaleAnim, { toValue: 1.0, duration: 110, useNativeDriver: true })
@@ -242,6 +246,7 @@ export default function HomeScreen({ navigation }) {
       await AsyncStorage.removeItem('mags_2048_coins');
       await AsyncStorage.removeItem('mags_2048_last_daily_claim');
       await AsyncStorage.removeItem('mags_2048_daily_streak_count');
+      await AsyncStorage.removeItem('mags_2048_ads_removed');
       
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       if (adTimerRef.current) clearInterval(adTimerRef.current);
@@ -250,6 +255,7 @@ export default function HomeScreen({ navigation }) {
       setCurrentStreak(1);
       setWalletCoins(0);
       setCountdownText('');
+      setIsPremiumUser(false);
       
       Alert.alert("🛠️ Test Ecosystem Reset", "All parameters flushed cleanly.");
     } catch (e) {
@@ -259,13 +265,18 @@ export default function HomeScreen({ navigation }) {
 
   const immediateClaimValue = calculateRewardPayout(currentStreak);
 
+  // Dynamic key attached to component ensures forceful component re-mount/render when premium state updates
   return (
-    <View style={styles.container}>
+    <View style={styles.container} key={`home-view-premium-render-${isPremiumUser || adsRemoved}`}>
       
       <View style={styles.topHeaderControlBar}>
         <View style={styles.brandingNode}>
           <Text style={styles.headerTitleBrand}>MAGS 2048</Text>
-          {currentUser && <Text style={styles.welcomeSubtitle}>User: {currentUser}</Text>}
+          {currentUser ? (
+            <Text style={styles.welcomeSubtitle}>Welcome back! 👋 {currentUser}</Text>
+          ) : (
+            <Text style={styles.welcomeSubtitle}>Welcome, Player! 🎮</Text>
+          )}
         </View>
 
         <Animated.View style={[styles.walletStatusPill, { transform: [{ scale: walletScaleAnim }] }]}>
@@ -326,7 +337,6 @@ export default function HomeScreen({ navigation }) {
           </View>
         )}
 
-        {/* --- ADJUSTED FLYING COIN TARGET DISPLAY --- */}
         <Animated.View 
           style={[
             styles.floatingAnimatedCoinItem, 
@@ -343,17 +353,27 @@ export default function HomeScreen({ navigation }) {
         </Animated.View>
       </View>
 
-      <TouchableOpacity style={styles.button} onPress={handlePlayPress}>
-        <Text style={styles.buttonText}>PLAY GAME 4x4</Text>
-      </TouchableOpacity>
+      {/* --- ACTION INTERFACE NAVIGATION CONTROLS --- */}
+      <View style={styles.navigationMenuBlock}>
+        <TouchableOpacity style={styles.primaryMenuBtn} onPress={handlePlayPress}>
+          <Text style={styles.primaryMenuBtnText}>🕹 Start Active Match</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.button, styles.secondaryButton]} onPress={() => navigation.navigate('Leaderboard')}>
-        <Text style={styles.secondaryButtonText}>LEADERBOARD</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={[styles.primaryMenuBtn, styles.secondaryMenuBtn]} onPress={() => navigation.navigate('Leaderboard')}>
+          <Text style={styles.secondaryMenuBtnText}>🏆 Global Leaderboards</Text>
+        </TouchableOpacity>
 
-      <TouchableOpacity style={styles.devResetButton} onPress={handleDevReset}>
-        <Text style={styles.devResetText}>🔧 RESET STREAK MATRIX (TEST PHASE UTILITY)</Text>
-      </TouchableOpacity>
+        {/* Condition evaluates cleanly using direct context flag to hide button */}
+        {!isPremiumUser && !adsRemoved && (
+          <TouchableOpacity style={[styles.primaryMenuBtn, styles.secondaryMenuBtn]} onPress={() => navigation.navigate('Shop')}>
+            <Text style={styles.secondaryMenuBtnText}>👑 Coin Store & Upgrades</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity style={styles.devResetButton} onPress={handleDevReset}>
+          <Text style={styles.devResetText}>⚠️ CLEAR ALL DATA (NEW USER TEST)</Text>
+        </TouchableOpacity>
+      </View>
 
       {showRewardAdModal && (
         <View style={styles.adOverlayContainer}>
@@ -382,7 +402,7 @@ export default function HomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#faf8ef', alignItems: 'center', justifyContent: 'flex-start', paddingTop: height * 0.08 },
-  topHeaderControlBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: width * 0.9, marginBottom: height * 0.05, paddingHorizontal: 4 },
+  topHeaderControlBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: width * 0.9, marginBottom: height * 0.04, paddingHorizontal: 4 },
   brandingNode: { alignItems: 'flex-start' },
   headerTitleBrand: { fontSize: 32, fontWeight: 'bold', color: '#776e65' },
   welcomeSubtitle: { fontSize: 13, color: '#a39485', fontWeight: '500', marginTop: 2 },
@@ -390,7 +410,7 @@ const styles = StyleSheet.create({
   walletTokenSymbol: { fontSize: 16, marginRight: 6 },
   walletBalanceText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
 
-  calendarCard: { position: 'relative', width: width * 0.9, backgroundColor: '#eee4da', padding: 18, borderRadius: 12, marginBottom: 35, borderWidth: 1, borderColor: '#dcd1c4', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3 },
+  calendarCard: { position: 'relative', width: width * 0.9, backgroundColor: '#eee4da', padding: 18, borderRadius: 12, marginBottom: 25, borderWidth: 1, borderColor: '#dcd1c4', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3 },
   calendarHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(119,110,101,0.12)', paddingBottom: 8 },
   calendarCardTitle: { fontSize: 11, fontWeight: 'bold', color: '#776e65', letterSpacing: 0.3 },
   streakBadgeText: { fontSize: 10, fontWeight: 'bold', backgroundColor: '#8f7a66', color: '#fff', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
@@ -417,13 +437,14 @@ const styles = StyleSheet.create({
 
   floatingAnimatedCoinItem: { position: 'absolute', bottom: 40, left: '44%', zIndex: 999 },
 
-  button: { backgroundColor: '#8f7a66', paddingHorizontal: 40, paddingVertical: 15, borderRadius: 6, width: width * 0.75, alignItems: 'center', marginBottom: 15 },
-  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  secondaryButton: { backgroundColor: '#bbada0' },
-  secondaryButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  
-  devResetButton: { marginTop: 20, padding: 8, borderWidth: 1, borderColor: '#e74c3c', borderRadius: 6, backgroundColor: 'rgba(231, 76, 60, 0.03)' },
-  devResetText: { color: '#e74c3c', fontSize: 9, fontWeight: 'bold', letterSpacing: 0.5 },
+  navigationMenuBlock: { width: width * 0.9, alignItems: 'center' },
+  primaryMenuBtn: { width: '100%', backgroundColor: '#f9945c', paddingVertical: 14, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 12, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2 },
+  primaryMenuBtnText: { color: '#ffffff', fontSize: 17, fontWeight: 'bold' },
+  secondaryMenuBtn: { backgroundColor: '#bbada0' },
+  secondaryMenuBtnText: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
+
+  devResetButton: { width: '100%', marginTop: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#e74c3c', borderRadius: 6, backgroundColor: 'rgba(231, 76, 60, 0.03)', alignItems: 'center', justifyContent: 'center' },
+  devResetText: { color: '#e74c3c', fontSize: 10, fontWeight: 'bold', letterSpacing: 0.5 },
 
   adOverlayContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.88)', justifyContent: 'center', alignItems: 'center', zIndex: 9999 },
   adVideoBoxCard: { width: width * 0.85, backgroundColor: '#1a1a1a', padding: 20, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#333' },

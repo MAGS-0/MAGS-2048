@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAds } from '../context/AdContext';
 import { getCoins, saveCoins } from '../utils/storage';
 import { logGameEvent } from '../utils/analytics';
@@ -9,11 +10,12 @@ import { logGameEvent } from '../utils/analytics';
 const { width } = Dimensions.get('window');
 
 export default function ShopScreen({ navigation }) {
-  const { isAdsRemoved, setAdsRemovedStatus } = useAds();
+  // CRITICAL FIX: Changed from isAdsRemoved to align exactly with your context state tracking property
+  const { adsRemoved, setAdsRemovedStatus } = useAds();
   const [isPurchasing, setIsPurchasing] = useState(false);
 
   const handlePurchase = async () => {
-    if (isAdsRemoved) {
+    if (adsRemoved) {
       Alert.alert("Already Active", "You already own the Premium Bundle! Thank you for supporting MAGS 2048.");
       return;
     }
@@ -23,7 +25,11 @@ export default function ShopScreen({ navigation }) {
 
     setTimeout(async () => {
       try {
+        // 1. Persist the state globally inside the global state tree context
         await setAdsRemovedStatus(true);
+        
+        // 2. CRITICAL LINK: Back up to persistent storage so the HomeScreen focus hook can read it instantly
+        await AsyncStorage.setItem('mags_2048_ads_removed', 'true');
 
         const currentCoins = await getCoins() || 0;
         const newCoinBalance = currentCoins + 10;
@@ -59,14 +65,14 @@ export default function ShopScreen({ navigation }) {
         <View style={styles.content}>
           <Text style={styles.shopIntro}>Upgrade your gameplay experience with premium features:</Text>
 
-          <View style={[styles.productCard, isAdsRemoved && styles.purchasedCard]}>
+          <View style={[styles.productCard, adsRemoved && styles.purchasedCard]}>
             <View style={styles.badgeRow}>
-              <Text style={styles.cardBadge}>{isAdsRemoved ? "ACTIVE TIER" : "BEST VALUE"}</Text>
+              <Text style={styles.cardBadge}>{adsRemoved ? "ACTIVE TIER" : "BEST VALUE"}</Text>
             </View>
             
             <Text style={styles.productEmoji}>👑</Text>
             <Text style={styles.productTitle}>MAGS Premium Bundle</Text>
-            <Text style={styles.productPrice}>{isAdsRemoved ? "Purchased" : "$2.99 Lifetime"}</Text>
+            <Text style={styles.productPrice}>{adsRemoved ? "Purchased" : "$2.99 Lifetime"}</Text>
 
             <View style={styles.featuresList}>
               <View style={styles.featureRow}>
@@ -88,15 +94,15 @@ export default function ShopScreen({ navigation }) {
             </View>
 
             <TouchableOpacity 
-              style={[styles.buyButton, isAdsRemoved && styles.disabledBuyButton]} 
+              style={[styles.buyButton, adsRemoved && styles.disabledBuyButton]} 
               onPress={handlePurchase}
-              disabled={isPurchasing || isAdsRemoved}
+              disabled={isPurchasing || adsRemoved}
             >
               {isPurchasing ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
                 <Text style={styles.buyButtonText}>
-                  {isAdsRemoved ? "PREMIUM UNLOCKED" : "UPGRADE NOW"}
+                  {adsRemoved ? "PREMIUM UNLOCKED" : "UPGRADE NOW"}
                 </Text>
               )}
             </TouchableOpacity>
