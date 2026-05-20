@@ -28,88 +28,79 @@ const UI_SOUNDS = {
  */
 export const preloadGameAudio = async () => {
   try {
-    // Configure hardware behavior for responsive gameplay mixing
+    // Configure hardware behavior for non-blocking, ambient gameplay audio mixing
     await Audio.setAudioModeAsync({
       playsInSilentModeIOS: true,
       staysActiveInBackground: false,
       shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
     });
 
-    // Unload existing instances if re-running code during hot-reloads
-    for (const key in soundObjects) {
-      if (soundObjects[key]) {
-        await soundObjects[key].unloadAsync();
+    // Load Tile sounds safely
+    for (const [key, source] of Object.entries(TILE_SOUNDS)) {
+      if (!soundObjects[`tile_${key}`]) {
+        const { sound } = await Audio.Sound.createAsync(source, { shouldPlay: false });
+        soundObjects[`tile_${key}`] = sound;
+        activeStatus[`tile_${key}`] = false;
       }
     }
 
-    // Load transactional interface sounds
-    for (const [key, asset] of Object.entries(UI_SOUNDS)) {
-      const { sound } = await Audio.Sound.createAsync(asset, { shouldCorrectPitch: false });
-      soundObjects[key] = sound;
-      activeStatus[key] = false;
+    // Load UI sounds safely
+    for (const [key, source] of Object.entries(UI_SOUNDS)) {
+      if (!soundObjects[key]) {
+        const { sound } = await Audio.Sound.createAsync(source, { shouldPlay: false });
+        soundObjects[key] = sound;
+        activeStatus[key] = false;
+      }
     }
-
-    // Load selective elite milestone sounds
-    for (const [tileValue, asset] of Object.entries(TILE_SOUNDS)) {
-      const { sound } = await Audio.Sound.createAsync(asset, { shouldCorrectPitch: false });
-      soundObjects[`tile_${tileValue}`] = sound;
-      activeStatus[`tile_${tileValue}`] = false;
-    }
-
-    console.log('[🔊 AUDIO] Premium responsive audio controller initialized.');
-  } catch (error) {
-    console.warn('[🔊 AUDIO ERROR] Preload routine bypassed safely:', error);
+  } catch (err) {
+    console.log('[🔊 AUDIO CONTROL PRELOAD EXCEPTION]', err);
   }
 };
 
 /**
- * Central router to combine ultra-low latency audio with tactile feedback
+ * Universal runner to execute short sound effects and haptic steps safely without blocking threads
  */
-const executeFeedback = async (soundKey, hapticStyle, soundOn = true, hapticOn = true) => {
+const executeFeedback = async (soundKey, hapticStyle, soundOn, hapticOn) => {
+  // 1. Execute physical device vibration engine requests natively
+  if (hapticOn) {
+    try {
+      if (hapticStyle === 'light') await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      else if (hapticStyle === 'medium') await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      else if (hapticStyle === 'heavy') await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    } catch (e) {
+      // Absorb silent haptic fallback cases on simulator/older targets safely
+    }
+  }
+
+  // 2. Stream audio files out from loaded cache profiles
+  if (!soundOn || !soundKey) return;
+
+  const sound = soundObjects[soundKey];
+  if (!sound) return;
+
+  // Stop overlapping tracks if a player moves faster than a sample sound file playback duration
+  if (activeStatus[soundKey]) return;
+
   try {
-    // 1. Tactile Haptic Triggers
-    if (hapticOn && hapticStyle) {
-      switch (hapticStyle) {
-        case 'light':
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          break;
-        case 'medium':
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          break;
-        case 'heavy':
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          break;
-        case 'success':
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          break;
-        case 'error':
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          break;
-      }
+    activeStatus[soundKey] = true;
+
+    const status = await sound.getStatusAsync();
+    if (status.isLoaded) {
+      // Re-rack the playhead to the beginning marker frame and trigger sound
+      await sound.setPositionAsync(0);
+      await sound.playAsync();
     }
-
-    // 2. Play Audio Engine Track (With rapid-fire overlap cut-off logic)
-    if (soundOn && soundObjects[soundKey]) {
-      const soundInstance = soundObjects[soundKey];
-
-      // If this specific sound channel is already running, intercept and force stop it immediately
-      if (activeStatus[soundKey]) {
-        await soundInstance.stopAsync();
-      }
-
-      activeStatus[soundKey] = true;
-
-      // Set hardware parameters sequentially to guarantee execution delivery
-      await soundInstance.setStatusAsync({
-        positionMillis: 0,
-        shouldPlay: true,
-        volume: 1.0
-      });
-
-      activeStatus[soundKey] = false;
-    }
+    
+    activeStatus[soundKey] = false;
   } catch (err) {
-    console.log('[🔊 FEEDBACK EXCEPTION]', err);
+    // Check if the issue is just Android dropping focus temporarily due to speed
+    const errorStr = String(err);
+    if (errorStr.includes('AudioFocusNotAcquiredException')) {
+      // Quietly absorb this system restriction warning without logging it to the screen console
+    } else {
+      console.log('[🔊 FEEDBACK EXCEPTION]', err);
+    }
     if (soundKey) activeStatus[soundKey] = false;
   }
 };
@@ -146,19 +137,17 @@ export const playMergeSound = (highestTileValue, soundOn, hapticOn) => {
 };
 
 export const playPowerUpSound = (type, soundOn, hapticOn) => {
-  executeFeedback(
-    type === 'undo' ? 'undo' : 'delete',
-    'success', 
-    soundOn,
-    hapticOn
-  );
+  if (type === 'undo') {
+    executeFeedback('undo', 'medium', soundOn, hapticOn);
+  } else if (type === 'delete') {
+    executeFeedback('delete', 'heavy', soundOn, hapticOn);
+  }
 };
 
 export const playGameStateSound = (state, soundOn, hapticOn) => {
-  executeFeedback(
-    state === 'start' ? 'start' : 'gameover',
-    state === 'start' ? 'medium' : 'error', 
-    soundOn,
-    hapticOn
-  );
+  if (state === 'start') {
+    executeFeedback('start', 'medium', soundOn, hapticOn);
+  } else if (state === 'gameover') {
+    executeFeedback('gameover', 'heavy', soundOn, hapticOn);
+  }
 };

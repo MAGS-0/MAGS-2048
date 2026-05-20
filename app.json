@@ -1,14 +1,13 @@
 {
   "expo": {
     "name": "MAGS 2048",
-    "slug": "MAGS-2048",
+    "slug": "mags-2048",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-image.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#faf8ef"
     },
@@ -19,10 +18,11 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#faf8ef"
-      }
+      },
+      "package": "com.mags2048.android"
     },
     "web": {
-      "favIcon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png"
     }
   }
 }

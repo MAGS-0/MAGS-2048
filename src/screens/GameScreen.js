@@ -6,9 +6,8 @@ import { submitGlobalScore } from '../utils/firebase';
 import Tile from '../components/Tile';
 import Confetti from '../components/Confetti';
 import UsernameModal from '../components/UsernameModal';
-import { useAds } from '../context/AdContext'; // --- IMPORT GLOBAL AD LINK ---
+import { useAds } from '../context/AdContext'; 
 
-// Safely display mock fallback layout linked to the premium storefront
 const BannerAdMock = ({ onFailed, navigation }) => (
   <TouchableOpacity style={styles.adBanner} onPress={() => navigation.navigate('Shop')}>
     <Text style={styles.adTag}>Ad Mock</Text>
@@ -19,7 +18,6 @@ const BannerAdMock = ({ onFailed, navigation }) => (
   </TouchableOpacity>
 );
 
-// --- FULL-SCREEN INTERSTITIAL AD MOCK COMPONENT ---
 const InterstitialAdMock = ({ onClose }) => {
   const [countdown, setCountdown] = useState(3);
   const timerRef = useRef(null);
@@ -60,7 +58,6 @@ const InterstitialAdMock = ({ onClose }) => {
   );
 };
 
-// Import our wrapper utilities to prevent crashes and stream low-latency audio
 import { logGameEvent } from '../utils/analytics';
 import { 
   preloadGameAudio, 
@@ -74,7 +71,6 @@ const { width } = Dimensions.get('window');
 const CELL_SIZE = (width - 40) / 4;
 
 export default function GameScreen({ navigation }) {
-  // --- CONSUME GLOBAL PREMIUM ADS STATUS ---
   const { isAdsRemoved, showInterstitial: triggerNativeInterstitial } = useAds();
 
   const [grid, setGrid] = useState(initializeGrid());
@@ -88,26 +84,19 @@ export default function GameScreen({ navigation }) {
   const [mergedCoords, setMergedCoords] = useState([]);
   const [showConfetti, setShowConfetti] = useState(false);
 
-  // --- STATES FOR SETTINGS INTERFACE ---
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [hapticEnabled, setHapticEnabled] = useState(true);
 
-  // --- STATES FOR DELETE POWER-UP ---
   const [isDeleteMode, setIsDeleteMode] = useState(false);
-
-  // --- UNIFIED COIN ECONOMY STATE ---
   const [coins, setCoins] = useState(0);
 
-  // --- REWARDED ADS ENGINE LOCAL SYSTEM STATES ---
   const [showRewardedAdModal, setShowRewardedAdModal] = useState(false);
   const [adCountdown, setAdCountdown] = useState(5);
   const adTimerRef = useRef(null);
 
-  // --- AD VISIBILITY TRACKER ---
   const [showAd, setShowAd] = useState(true);
 
-  // --- NEW STATES FOR GAME OVER AND INTERSTITIAL FLOW ---
   const [showGameOverScreen, setShowGameOverScreen] = useState(false);
   const [showInterstitial, setShowInterstitial] = useState(false);
 
@@ -153,7 +142,6 @@ export default function GameScreen({ navigation }) {
     return () => clearInterval(adTimerRef.current);
   }, []);
 
-  // Sync state if user returns from shop with newly purchased coins
   useEffect(() => {
     const syncCoins = navigation.addListener('focus', async () => {
       const storedCoins = await getCoins();
@@ -183,7 +171,6 @@ export default function GameScreen({ navigation }) {
     await saveCoins(newBalance);
   };
 
-  // --- REWARDED ADS HANDLERS MECHANICS ---
   const launchRewardedAdVideo = () => {
     setIsDeleteMode(false);
     setAdCountdown(5);
@@ -256,62 +243,72 @@ export default function GameScreen({ navigation }) {
 
       let newCoord = null;
       let merges = [];
-      let milestoneReached = false;
-      let topMergedValue = 0;
+      let milestoneTileFound = 0;
 
-      const preExistingTiles = [];
-      oldGrid.forEach(row => row.forEach(cell => {
-        if (cell > 0) preExistingTiles.push(cell);
-      }));
-
+      // Find where the new random layout tile spawned
       nextGrid.forEach((row, r) => {
         row.forEach((cell, c) => {
           if (oldGrid[r][c] === 0 && nextGrid[r][c] !== 0) {
             newCoord = `${r}-${c}`;
           }
-          
-          if (nextGrid[r][c] > oldGrid[r][c] && oldGrid[r][c] !== 0) {
-              const index = preExistingTiles.indexOf(nextGrid[r][c]);
-              if (index === -1) {
-                merges.push(`${r}-${c}`);
-                if (nextGrid[r][c] > topMergedValue) {
-                  topMergedValue = nextGrid[r][c];
-                }
-                if (nextGrid[r][c] >= 512) milestoneReached = true;
-              } else {
-                preExistingTiles.splice(index, 1);
-              }
-          }
         });
       });
 
-      if (topMergedValue > 0) {
-        playMergeSound(topMergedValue, soundEnabled, hapticEnabled);
+      // --- MATHEMATICAL MILESTONE CALCULATOR ---
+      // We read the grid values directly to see what was formed on this move
+      const oldCounts = {};
+      const nextCounts = {};
+
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          const valOld = oldGrid[r][c];
+          const valNext = nextGrid[r][c];
+          if (valOld > 0) oldCounts[valOld] = (oldCounts[valOld] || 0) + 1;
+          if (valNext > 0) nextCounts[valNext] = (nextCounts[valNext] || 0) + 1;
+        }
+      }
+
+      // Check milestones starting from highest down to 128
+      const milestonesToCheck = [2048, 1024, 512, 256, 128];
+      for (let m of milestonesToCheck) {
+        const currentCount = nextCounts[m] || 0;
+        const previousCount = oldCounts[m] || 0;
+
+        // If we have more of this tile value now than before the slide, one was definitely created!
+        if (currentCount > previousCount) {
+          milestoneTileFound = m;
+          break; 
+        }
+      }
+
+      // Play audio engine tracks perfectly
+      if (result.score > 0) {
+        playMergeSound(milestoneTileFound > 0 ? milestoneTileFound : 2, soundEnabled, hapticEnabled);
       } else {
         playSwipeSound(direction, soundEnabled, hapticEnabled);
       }
 
-      if (topMergedValue >= 128) {
+      // Process rewards if a milestone was reached
+      if (milestoneTileFound >= 128) {
         const updatedCoins = coins + 1;
         await updateWalletCoins(updatedCoins);
+        
         Alert.alert(
           "🪙 Milestone Earned!",
-          `Amazing! You unlocked a ${topMergedValue} tile and earned +1 Coin! Keep it up.`,
+          `Amazing! You unlocked a ${milestoneTileFound} tile and earned +1 Coin! Keep it up.`,
           [{ text: "Sweet!", style: "default" }]
         );
-      }
 
-      if (topMergedValue >= 128) {
         logGameEvent('score_milestone', {
-          tile_value: topMergedValue,
+          tile_value: milestoneTileFound,
           current_total_score: nextScore
         });
-      }
 
-      if (milestoneReached) {
-        setShowConfetti(false);
-        setTimeout(() => setShowConfetti(true), 10);
-        setTimeout(() => setShowConfetti(false), 2000);
+        if (milestoneTileFound >= 512) {
+          setShowConfetti(false);
+          setTimeout(() => setShowConfetti(true), 10);
+          setTimeout(() => setShowConfetti(false), 2000);
+        }
       }
 
       setNewTileCoord(newCoord);
@@ -342,7 +339,6 @@ export default function GameScreen({ navigation }) {
           setShowNameModal(true);
         }
 
-        // 🚀 BYPASS CHECK: If premium active, jump straight to Game Over screen layout
         if (isAdsRemoved) {
           setShowGameOverScreen(true);
         } else {
@@ -469,7 +465,6 @@ export default function GameScreen({ navigation }) {
 
   return (
     <View style={styles.container} {...panResponder.panHandlers}>
-      {/* HEADER SECTION */}
       <View style={styles.header}>
         <View style={styles.titleContainer}>
           <Text style={styles.title}>2048</Text>
@@ -503,15 +498,12 @@ export default function GameScreen({ navigation }) {
         </View>
       </View>
 
-      {/* AD CONTAINER SECTION */}
       <View style={styles.adWrapper}>
-        {/* Hides the ad block instantly if premium package is owned */}
         {!isAdsRemoved && showAd && (
           <BannerAdMock onFailed={() => setShowAd(false)} navigation={navigation} />
         )}
       </View>
 
-      {/* COMPACT BOARD MATRIX LAYER */}
       <View style={styles.grid}>
         <View style={styles.backgroundGrid}>
           {Array(16).fill(null).map((_, i) => (
@@ -548,7 +540,6 @@ export default function GameScreen({ navigation }) {
         </View>
       </View>
 
-      {/* BOTTOM INTERFACE GRID */}
       <View style={styles.powerUpsWrapper}>
         <Text style={styles.powerUpsTitle}>POWER-UPS</Text>
         
@@ -583,19 +574,16 @@ export default function GameScreen({ navigation }) {
         </View>
 
         <View style={styles.powerUpRow}>
-          <TouchableOpacity 
-            style={[styles.powerUpBtn, styles.homeBtn]} 
-            onPress={() => {
-              Alert.alert(
-                "Start New Game?",
-                "Are you sure you want to end this game? Your current progress will be lost.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  { text: "Start New", style: "destructive", onPress: () => resetGame() }
-                ]
-              );
-            }}
-          >
+          <TouchableOpacity style={[styles.powerUpBtn, styles.homeBtn]} onPress={() => {
+            Alert.alert(
+              "Start New Game?",
+              "Are you sure you want to end this game? Your current progress will be lost.",
+              [
+                { text: "Cancel", style: "cancel" },
+                { text: "Start New", style: "destructive", onPress: () => resetGame() }
+              ]
+            );
+          }}>
             <Text style={styles.powerUpBtnText}>🔄Restart</Text>
           </TouchableOpacity>
           
@@ -608,7 +596,6 @@ export default function GameScreen({ navigation }) {
         </View>
       </View>
 
-      {/* SETTINGS OVERLAY MODAL */}
       {showSettingsModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.settingsCard}>
@@ -634,7 +621,6 @@ export default function GameScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            {/* --- LINK FROM SETTINGS CARD MENU TO SHOP SCREEN --- */}
             <TouchableOpacity style={[styles.menuItemBtn, { backgroundColor: '#e1b024' }]} onPress={() => { setShowSettingsModal(false); navigation.navigate('Shop'); }}>
               <Text style={styles.menuItemText}>👑 Open Game Shop</Text>
             </TouchableOpacity>
@@ -650,7 +636,6 @@ export default function GameScreen({ navigation }) {
         </View>
       )}
 
-      {/* --- REWARDED VIDEO STREAM OVERLAY MOCK CARD --- */}
       {showRewardedAdModal && (
         <View style={[styles.modalOverlay, styles.adOverlayBackground]}>
           <View style={styles.adVideoCard}>
@@ -675,7 +660,6 @@ export default function GameScreen({ navigation }) {
         </View>
       )}
 
-      {/* --- FULL SCREEN INTERSTITIAL AD INTERCEPT LAYER --- */}
       {showInterstitial && (
         <InterstitialAdMock onClose={() => {
           setShowInterstitial(false);
@@ -683,7 +667,6 @@ export default function GameScreen({ navigation }) {
         }} />
       )}
 
-      {/* --- FULL SCREEN GAME OVER SCREEN OVERLAY --- */}
       {showGameOverScreen && (
         <View style={styles.modalOverlay}>
           <View style={styles.gameOverCard}>
