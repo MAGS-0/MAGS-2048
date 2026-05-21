@@ -1,10 +1,12 @@
 export const GRID_SIZE = 4;
 
+const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
+
 export const getEmptyCells = (grid) => {
   const cells = [];
   grid.forEach((row, rowIndex) => {
     row.forEach((cell, colIndex) => {
-      if (cell === 0) cells.push({ r: rowIndex, c: colIndex });
+      if (cell === null) cells.push({ r: rowIndex, c: colIndex });
     });
   });
   return cells;
@@ -14,34 +16,43 @@ export const spawnTile = (grid) => {
   const emptyCells = getEmptyCells(grid);
   if (emptyCells.length === 0) return grid;
   const { r, c } = emptyCells[Math.floor(Math.random() * emptyCells.length)];
-  const newGrid = [...grid.map(row => [...row])];
-  newGrid[r][c] = Math.random() < 0.9 ? 2 : 4;
+  const newGrid = grid.map(row => row.map(cell => (cell ? { ...cell } : null)));
+  const val = Math.random() < 0.9 ? 2 : 4;
+  newGrid[r][c] = { id: uid(), value: val };
   return newGrid;
 };
 
 export const initializeGrid = () => {
-  let grid = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(0));
+  let grid = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(null));
   grid = spawnTile(grid);
   grid = spawnTile(grid);
   return grid;
 };
 
 const slideAndMerge = (row) => {
-  let line = row.filter(num => num !== 0);
+  const tiles = row.filter(t => t !== null);
+  const result = [];
   let score = 0;
-  for (let i = 0; i < line.length - 1; i++) {
-    if (line[i] === line[i + 1]) {
-      line[i] *= 2;
-      score += line[i];
-      line.splice(i + 1, 1);
+
+  for (let i = 0; i < tiles.length; i++) {
+    const current = tiles[i];
+    const next = tiles[i + 1];
+    if (next && current.value === next.value) {
+      const newValue = current.value * 2;
+      score += newValue;
+      result.push({ id: uid(), value: newValue });
+      i++;
+    } else {
+      result.push({ ...current });
     }
   }
-  while (line.length < GRID_SIZE) line.push(0);
-  return { line, score };
+
+  while (result.length < GRID_SIZE) result.push(null);
+  return { line: result, score };
 };
 
 export const moveGrid = (grid, direction) => {
-  let newGrid = [...grid.map(row => [...row])];
+  let newGrid = grid.map(row => row.map(cell => (cell ? { ...cell } : null)));
   let totalScore = 0;
   let changed = false;
 
@@ -58,12 +69,19 @@ export const moveGrid = (grid, direction) => {
     let finalRow = direction === 'right' || direction === 'down' ? [...line].reverse() : line;
 
     for (let j = 0; j < GRID_SIZE; j++) {
+      const target = finalRow[j];
       if (direction === 'left' || direction === 'right') {
-        if (newGrid[i][j] !== finalRow[j]) changed = true;
-        newGrid[i][j] = finalRow[j];
+        const existing = newGrid[i][j];
+        const existingVal = existing ? existing.value : null;
+        const targetVal = target ? target.value : null;
+        if (existingVal !== targetVal) changed = true;
+        newGrid[i][j] = target ? { ...target } : null;
       } else {
-        if (newGrid[j][i] !== finalRow[j]) changed = true;
-        newGrid[j][i] = finalRow[j];
+        const existing = newGrid[j][i];
+        const existingVal = existing ? existing.value : null;
+        const targetVal = target ? target.value : null;
+        if (existingVal !== targetVal) changed = true;
+        newGrid[j][i] = target ? { ...target } : null;
       }
     }
   }
@@ -85,14 +103,18 @@ export const isGameOver = (grid) => {
   // 2. Check if any adjacent cells can merge (Horizontal)
   for (let r = 0; r < GRID_SIZE; r++) {
     for (let c = 0; c < GRID_SIZE - 1; c++) {
-      if (grid[r][c] === grid[r][c + 1]) return false;
+      const a = grid[r][c] ? grid[r][c].value : null;
+      const b = grid[r][c + 1] ? grid[r][c + 1].value : null;
+      if (a !== null && a === b) return false;
     }
   }
 
   // 3. Check if any adjacent cells can merge (Vertical)
   for (let c = 0; c < GRID_SIZE; c++) {
     for (let r = 0; r < GRID_SIZE - 1; r++) {
-      if (grid[r][c] === grid[r + 1][c]) return false;
+      const a = grid[r][c] ? grid[r][c].value : null;
+      const b = grid[r + 1][c] ? grid[r + 1][c].value : null;
+      if (a !== null && a === b) return false;
     }
   }
 

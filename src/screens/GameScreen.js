@@ -70,8 +70,61 @@ import {
 const { width } = Dimensions.get('window');
 const CELL_SIZE = (width - 40) / 4;
 
+const convertNumericGridToObjects = (numericGrid) => {
+  if (!Array.isArray(numericGrid)) return numericGrid;
+  return numericGrid.map((row) =>
+    row.map((cell) => (cell === 0 || cell === '0' ? null : (cell === null ? null : { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`, value: cell })))
+  );
+};
+
+// --- HELPER COMPONENT FOR SMOOTH SLIDING WRAPPERS ---
+function AnimatedTileWrapper({ r, c, isDeleteMode, onTileSelect, children }) {
+  const animatedPos = useRef(new Animated.ValueXY({ x: c * CELL_SIZE, y: r * CELL_SIZE })).current;
+
+  useEffect(() => {
+    Animated.timing(animatedPos, {
+      toValue: { x: c * CELL_SIZE, y: r * CELL_SIZE },
+      duration: 150, // Crisp swiping speed match
+      useNativeDriver: true,
+    }).start();
+  }, [r, c]);
+
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        width: CELL_SIZE,
+        height: CELL_SIZE,
+        justifyContent: 'center',
+        alignItems: 'center',
+        transform: [
+          { translateX: animatedPos.x },
+          { translateY: animatedPos.y }
+        ]
+      }}
+    >
+      <TouchableOpacity
+        activeOpacity={isDeleteMode ? 0.5 : 1}
+        onPress={onTileSelect}
+        disabled={!isDeleteMode}
+        style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}
+      >
+        {children}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
 export default function GameScreen({ navigation }) {
-  const { isAdsRemoved, showInterstitial: triggerNativeInterstitial } = useAds();
+  const adContext = useAds();
+  const isAdsRemoved = adContext?.isAdsRemoved || adContext?.adsRemoved;
+  const hideInterstitialAction = adContext?.hideInterstitialAction;
+
+  const checkInterstitialReady = () => {
+    if (typeof adContext?.isInterstitialReadyAction === 'function') return adContext.isInterstitialReadyAction();
+    if (typeof adContext?.isInterstitialReady === 'function') return adContext.isInterstitialReady();
+    return false;
+  };
 
   const [grid, setGrid] = useState(initializeGrid());
   const [score, setScore] = useState(0);
@@ -98,7 +151,6 @@ export default function GameScreen({ navigation }) {
   const [showAd, setShowAd] = useState(true);
 
   const [showGameOverScreen, setShowGameOverScreen] = useState(false);
-  const [showInterstitial, setShowInterstitial] = useState(false);
 
   const scoreBounce = useRef(new Animated.Value(1)).current;
 
@@ -121,7 +173,12 @@ export default function GameScreen({ navigation }) {
 
       const saved = await loadGameState();
       if (saved && saved.grid) {
-        setGrid(saved.grid);
+        const sampleCell = saved.grid && saved.grid[0] && saved.grid[0][0];
+        if (typeof sampleCell === 'number') {
+          setGrid(convertNumericGridToObjects(saved.grid));
+        } else {
+          setGrid(saved.grid);
+        }
         setScore(saved.score);
       } else {
         playGameStateSound('start', soundEnabled, hapticEnabled);
@@ -179,7 +236,7 @@ export default function GameScreen({ navigation }) {
     logGameEvent('ad_request', { type: 'rewarded_video_coin' });
 
     adTimerRef.current = setInterval(() => {
-      setAdCountdown((prev) => {
+      setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(adTimerRef.current);
           return 0;
@@ -220,7 +277,6 @@ export default function GameScreen({ navigation }) {
     setShowConfetti(false);
     setIsDeleteMode(false);
     setShowGameOverScreen(false);
-    setShowInterstitial(false);
 
     const newGrid = initializeGrid();
     setGrid(newGrid);
@@ -230,7 +286,7 @@ export default function GameScreen({ navigation }) {
   };
 
   const handleMove = async (direction) => {
-    if (isDeleteMode || showRewardedAdModal || showGameOverScreen || showInterstitial) return;
+    if (isDeleteMode || showRewardedAdModal || showGameOverScreen) return;
 
     const oldGrid = JSON.parse(JSON.stringify(grid));
     const result = moveGrid(grid, direction);
@@ -245,50 +301,43 @@ export default function GameScreen({ navigation }) {
       let merges = [];
       let milestoneTileFound = 0;
 
-      // Find where the new random layout tile spawned
       nextGrid.forEach((row, r) => {
         row.forEach((cell, c) => {
-          if (oldGrid[r][c] === 0 && nextGrid[r][c] !== 0) {
+          if ((oldGrid[r][c] === null || oldGrid[r][c] === 0) && nextGrid[r][c] !== null) {
             newCoord = `${r}-${c}`;
           }
         });
       });
 
-      // --- MATHEMATICAL MILESTONE CALCULATOR ---
-      // We read the grid values directly to see what was formed on this move
       const oldCounts = {};
       const nextCounts = {};
 
       for (let r = 0; r < 4; r++) {
         for (let c = 0; c < 4; c++) {
-          const valOld = oldGrid[r][c];
-          const valNext = nextGrid[r][c];
+          const valOld = oldGrid[r][c] ? oldGrid[r][c].value : 0;
+          const valNext = nextGrid[r][c] ? nextGrid[r][c].value : 0;
           if (valOld > 0) oldCounts[valOld] = (oldCounts[valOld] || 0) + 1;
           if (valNext > 0) nextCounts[valNext] = (nextCounts[valNext] || 0) + 1;
         }
       }
 
-      // Check milestones starting from highest down to 128
       const milestonesToCheck = [2048, 1024, 512, 256, 128];
       for (let m of milestonesToCheck) {
         const currentCount = nextCounts[m] || 0;
         const previousCount = oldCounts[m] || 0;
 
-        // If we have more of this tile value now than before the slide, one was definitely created!
         if (currentCount > previousCount) {
           milestoneTileFound = m;
           break; 
         }
       }
 
-      // Play audio engine tracks perfectly
       if (result.score > 0) {
         playMergeSound(milestoneTileFound > 0 ? milestoneTileFound : 2, soundEnabled, hapticEnabled);
       } else {
         playSwipeSound(direction, soundEnabled, hapticEnabled);
       }
 
-      // Process rewards if a milestone was reached
       if (milestoneTileFound >= 128) {
         const updatedCoins = coins + 1;
         await updateWalletCoins(updatedCoins);
@@ -339,12 +388,7 @@ export default function GameScreen({ navigation }) {
           setShowNameModal(true);
         }
 
-        if (isAdsRemoved) {
-          setShowGameOverScreen(true);
-        } else {
-          logGameEvent('ad_request', { type: 'interstitial_gameover' });
-          setShowInterstitial(true);
-        }
+        setShowGameOverScreen(true);
       }
     }
   };
@@ -382,10 +426,10 @@ export default function GameScreen({ navigation }) {
 
   const handleTileSelect = async (r, c) => {
     if (!isDeleteMode) return;
-    if (grid[r][c] === 0) return;
+    if (grid[r][c] === null) return;
 
     let activeTileCount = 0;
-    grid.forEach(row => row.forEach(cell => { if (cell !== 0) activeTileCount++; }));
+    grid.forEach(row => row.forEach(cell => { if (cell !== null) activeTileCount++; }));
 
     if (activeTileCount <= 1) {
       Alert.alert("Action Blocked", "You cannot delete a tile if it is the only one remaining on the board!");
@@ -395,7 +439,7 @@ export default function GameScreen({ navigation }) {
 
     logGameEvent('powerup_used', {
       type: 'delete_tile',
-      deleted_tile_value: grid[r][c],
+      deleted_tile_value: grid[r][c] ? grid[r][c].value : null,
       score_at_time_of_use: score
     });
 
@@ -404,8 +448,8 @@ export default function GameScreen({ navigation }) {
     const oldGrid = JSON.parse(JSON.stringify(grid));
     setHistory(prev => [...prev, { grid: oldGrid, score }]);
 
-    const nextGrid = grid.map(row => [...row]);
-    nextGrid[r][c] = 0;
+    const nextGrid = grid.map(row => row.map(cell => (cell ? { ...cell } : null)));
+    nextGrid[r][c] = null;
 
     setNewTileCoord(null);
     setMergedCoords([]);
@@ -511,32 +555,33 @@ export default function GameScreen({ navigation }) {
           ))}
         </View>
         <View style={styles.tileContainer}>
-          {grid.map((row, r) => row.map((cell, c) => (
-            <TouchableOpacity 
-              key={`tile-trigger-${r}-${c}`}
-              activeOpacity={isDeleteMode ? 0.5 : 1}
-              onPress={() => handleTileSelect(r, c)}
-              disabled={!isDeleteMode}
-              style={{ 
-                position: 'absolute', 
-                left: c * CELL_SIZE, 
-                top: r * CELL_SIZE,
-                width: CELL_SIZE,
-                height: CELL_SIZE,
-                justifyContent: 'center',
-                alignItems: 'center'
-              }}
-            >
-              {cell !== 0 && (
+          {(() => {
+            const tiles = [];
+            grid.forEach((row, r) => {
+              row.forEach((cell, c) => {
+                if (cell !== null) tiles.push({ ...cell, r, c });
+              });
+            });
+
+            return tiles.map((tile) => (
+              <AnimatedTileWrapper
+                key={tile.id}
+                r={tile.r}
+                c={tile.c}
+                isDeleteMode={isDeleteMode}
+                onTileSelect={() => handleTileSelect(tile.r, tile.c)}
+              >
                 <Tile 
-                  value={cell} 
+                  value={tile.value} 
                   cellSize={CELL_SIZE} 
-                  isNew={newTileCoord === `${r}-${c}`} 
-                  isMerged={mergedCoords.includes(`${r}-${c}`)}
+                  isNew={newTileCoord === `${tile.r}-${tile.c}`} 
+                  isMerged={mergedCoords.includes(`${tile.r}-${tile.c}`)}
+                  r={tile.r}
+                  c={tile.c}
                 />
-              )}
-            </TouchableOpacity>
-          )))}
+              </AnimatedTileWrapper>
+            ));
+          })()}
         </View>
       </View>
 
@@ -660,10 +705,11 @@ export default function GameScreen({ navigation }) {
         </View>
       )}
 
-      {showInterstitial && (
+      {checkInterstitialReady() && showGameOverScreen && (
         <InterstitialAdMock onClose={() => {
-          setShowInterstitial(false);
-          setShowGameOverScreen(true);
+          if (typeof hideInterstitialAction === 'function') {
+            hideInterstitialAction();
+          }
         }} />
       )}
 

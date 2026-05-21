@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const GAME_STATE_KEY = '@mags_2048_game_state';
 const HIGH_SCORE_KEY = '@mags_2048_high_score';
 const USERNAME_KEY = '@mags_2048_username';
+const USER_AVATAR_KEY = '@mags_2048_user_avatar'; // Dedicated slot for storing selected profile picture index
 
 export const saveGameState = async (grid, score) => {
   try {
@@ -63,9 +64,38 @@ export const getUsername = async () => {
   }
 };
 
+/**
+ * Saves the selected avatar asset identifier string to device storage
+ */
+export const saveUserAvatar = async (avatarId) => {
+  try {
+    if (avatarId) {
+      await AsyncStorage.setItem(USER_AVATAR_KEY, avatarId);
+      console.log("Storage: Successfully saved user avatar ID:", avatarId);
+    }
+  } catch (e) {
+    console.error("Error saving user avatar", e);
+  }
+};
+
+/**
+ * Retrieves the stored avatar asset identifier string.
+ * Defaults to 'avatar_1' to ensure a pre-selected image is always available.
+ */
+export const getUserAvatar = async () => {
+  try {
+    const avatarId = await AsyncStorage.getItem(USER_AVATAR_KEY);
+    return avatarId != null ? avatarId : 'avatar_1';
+  } catch (e) {
+    console.error("Error getting user avatar", e);
+    return 'avatar_1';
+  }
+};
+
 export const clearStorage = async () => {
   try {
     await AsyncStorage.clear();
+    console.log("Storage: Core profile and game registries thoroughly wiped.");
   } catch (e) {
     console.error("Error clearing storage", e);
   }
@@ -88,7 +118,7 @@ export const getCoins = async () => {
     const coins = await AsyncStorage.getItem('mags_2048_coins');
     return coins !== null ? parseInt(coins, 10) : null;
   } catch (error) {
-    console.error('Error getting coins:', error);
+    console.error('Error reading coins:', error);
     return null;
   }
 };
