@@ -3,6 +3,7 @@ import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, ActivityIn
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Button3D from '../components/Button3D';
 import { useAds } from '../context/AdContext';
 import { getCoins, saveCoins } from '../utils/storage';
 import { logGameEvent } from '../utils/analytics';
@@ -55,9 +56,9 @@ export default function ShopScreen({ navigation }) {
     <SafeAreaProvider>
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Button3D onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="close" size={30} color="#776e65" />
-          </TouchableOpacity>
+          </Button3D>
           <Text style={styles.headerTitle}>GAME SHOP</Text>
           <View style={{ width: 30 }} />
         </View>
@@ -93,7 +94,7 @@ export default function ShopScreen({ navigation }) {
               </View>
             </View>
 
-            <TouchableOpacity 
+            <Button3D 
               style={[styles.buyButton, adsRemoved && styles.disabledBuyButton]} 
               onPress={handlePurchase}
               disabled={isPurchasing || adsRemoved}
@@ -105,7 +106,7 @@ export default function ShopScreen({ navigation }) {
                   {adsRemoved ? "PREMIUM UNLOCKED" : "UPGRADE NOW"}
                 </Text>
               )}
-            </TouchableOpacity>
+            </Button3D>
           </View>
 
           <Text style={styles.footerLegal}>
@@ -121,7 +122,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#faf8ef' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10 },
   headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#776e65' },
-  backButton: { padding: 4 },
+  backButton: { padding: 4, backgroundColor: '#ffffff', borderRadius: 8, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.16, shadowRadius: 3 },
   content: { flex: 1, alignItems: 'center', paddingHorizontal: 24, paddingTop: 20 },
   shopIntro: { fontSize: 15, color: '#776e65', textAlign: 'center', marginBottom: 30, opacity: 0.9, lineHeight: 22 },
   
@@ -139,7 +140,7 @@ const styles = StyleSheet.create({
   featureCheck: { color: '#e1b024', fontWeight: 'bold', fontSize: 18, marginRight: 12 },
   featureText: { color: '#776e65', fontSize: 14, fontWeight: '500' },
   
-  buyButton: { width: '100%', backgroundColor: '#8f7a66', paddingVertical: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  buyButton: { width: '100%', backgroundColor: '#8f7a66', paddingVertical: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 4 },
   disabledBuyButton: { backgroundColor: '#bbada0' },
   buyButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold', letterSpacing: 0.5 },
   footerLegal: { fontSize: 11, color: '#bbada0', textAlign: 'center', marginTop: 40, paddingHorizontal: 20 }

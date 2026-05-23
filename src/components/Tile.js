@@ -1,39 +1,16 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
 
-export default function Tile({ value, cellSize, isNew, isMerged, r, c }) {
+export default function Tile({ value, cellSize, isNew, isMerged }) {
   // 1. Setup clean scale animation nodes
   const scaleValue = useRef(new Animated.Value(isNew ? 0 : 1)).current;
   const pulseValue = useRef(new Animated.Value(1)).current;
-  
-  // 2. Setup sliding position tracking nodes (X and Y offsets)
-  const positionAnimated = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
 
-  // Track previous grid positions and values to calculate relative movement path
-  const prevRowRef = useRef(r);
-  const prevColRef = useRef(c);
+  // Track previous grid values to calculate merge animation only
   const previousValueRef = useRef(value);
 
   useEffect(() => {
     if (value !== 0) {
-      // --- SLIDING MOTION LOGIC ---
-      // If the row or column changed, calculate the distance moved and slide smoothly
-      if (prevRowRef.current !== r || prevColRef.current !== c) {
-        // Calculate the starting offset from the previous position relative to the new position
-        const initialX = (prevColRef.current - c) * cellSize;
-        const initialY = (prevRowRef.current - r) * cellSize;
-        
-        // Immediately place the tile at that starting offset position
-        positionAnimated.setValue({ x: initialX, y: initialY });
-        
-        // Smoothly animate the offset back to 0 (the final destination slot)
-        Animated.timing(positionAnimated, {
-          toValue: { x: 0, y: 0 },
-          duration: 150,
-          useNativeDriver: true,
-        }).start();
-      }
-
       // --- SPAWNING ANIMATION ---
       if (isNew) {
         scaleValue.setValue(0);
@@ -56,11 +33,9 @@ export default function Tile({ value, cellSize, isNew, isMerged, r, c }) {
       }
     }
     
-    // Save current states so they serve as the "previous" point during the next move
-    prevRowRef.current = r;
-    prevColRef.current = c;
+    // Save the current value so the next render can detect merges only
     previousValueRef.current = value;
-  }, [value, isNew, isMerged, r, c, cellSize]);
+  }, [value, isNew, isMerged]);
 
   const getTileStyle = (val) => {
     const colors = {
@@ -95,10 +70,7 @@ export default function Tile({ value, cellSize, isNew, isMerged, r, c }) {
   const tileStyle = getTileStyle(value);
   const textStyle = getTextStyle(value);
 
-  // Combine sliding positions (translateX, translateY) and scaling sizes together safely
   const combinedTransform = [
-    { translateX: positionAnimated.x },
-    { translateY: positionAnimated.y },
     { scale: scaleValue },
     { scale: pulseValue }
   ];
@@ -118,10 +90,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 1.5,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    elevation: 5,
   },
   text: {
     fontWeight: 'bold',

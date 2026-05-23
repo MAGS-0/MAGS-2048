@@ -1,16 +1,38 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, Animated } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, Animated, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getUsername, saveUsername, getCoins, saveCoins } from '../utils/storage';
+import { getUsername, getUserAvatar, getCoins, saveCoins } from '../utils/storage';
+import UsernameModal from '../components/UsernameModal';
+import Button3D from '../components/Button3D';
 import { useAds } from '../context/AdContext';
 import { fetchRemoteBaseCoins } from '../utils/firebase';
 
 const { width, height } = Dimensions.get('window');
 
+const AVATAR_SOURCES = {
+  avatar_1: require('../assets/avatar1.png'),
+  avatar_2: require('../assets/avatar2.png'),
+  avatar_3: require('../assets/avatar3.png'),
+  avatar_4: require('../assets/avatar4.png'),
+  avatar_5: require('../assets/avatar5.png'),
+  avatar_6: require('../assets/avatar6.png'),
+  avatar_7: require('../assets/avatar7.png'),
+  avatar_8: require('../assets/avatar8.png'),
+  avatar_9: require('../assets/avatar9.png'),
+  avatar_10: require('../assets/avatar10.png'),
+  avatar_11: require('../assets/avatar11.png'),
+  avatar_12: require('../assets/avatar12.png'),
+  avatar_13: require('../assets/avatar13.png'),
+  avatar_14: require('../assets/avatar14.png'),
+  avatar_15: require('../assets/avatar15.png'),
+};
+
 export default function HomeScreen({ navigation }) {
   // Destructure adsRemoved instead of missing parameters to match AdContext
   const { showInterstitial, setAdsRemovedStatus, adsRemoved } = useAds();
   const [currentUser, setCurrentUser] = useState(null);
+  const [currentAvatar, setCurrentAvatar] = useState('avatar_1');
+  const [showProfileModal, setShowProfileModal] = useState(false);
   
   // Local state to track if the premium pack has been purchased
   const [isPremiumUser, setIsPremiumUser] = useState(false);
@@ -37,9 +59,11 @@ export default function HomeScreen({ navigation }) {
 
   useEffect(() => {
     const initializeDashboard = async () => {
-      await saveUsername('Sum');
       const name = await getUsername();
       setCurrentUser(name);
+
+      const avatarId = await getUserAvatar();
+      setCurrentAvatar(avatarId);
 
       const totalCoins = await getCoins() || 0;
       setWalletCoins(totalCoins);
@@ -113,6 +137,12 @@ export default function HomeScreen({ navigation }) {
     } catch (e) {
       console.log(e);
     }
+  };
+
+  const handleProfileSave = (name, avatarId) => {
+    if (name) setCurrentUser(name);
+    if (avatarId) setCurrentAvatar(avatarId);
+    setShowProfileModal(false);
   };
 
   const calculateRewardPayout = (streakValue) => {
@@ -244,6 +274,8 @@ export default function HomeScreen({ navigation }) {
     try {
       await setAdsRemovedStatus(false);
       await AsyncStorage.removeItem('mags_2048_coins');
+      await AsyncStorage.removeItem('@mags_2048_username');
+      await AsyncStorage.removeItem('@mags_2048_user_avatar');
       await AsyncStorage.removeItem('mags_2048_last_daily_claim');
       await AsyncStorage.removeItem('mags_2048_daily_streak_count');
       await AsyncStorage.removeItem('mags_2048_ads_removed');
@@ -254,6 +286,8 @@ export default function HomeScreen({ navigation }) {
       setIsRewardClaimed(false);
       setCurrentStreak(1);
       setWalletCoins(0);
+      setCurrentUser(null);
+      setCurrentAvatar('avatar_1');
       setCountdownText('');
       setIsPremiumUser(false);
       
@@ -272,11 +306,22 @@ export default function HomeScreen({ navigation }) {
       <View style={styles.topHeaderControlBar}>
         <View style={styles.brandingNode}>
           <Text style={styles.headerTitleBrand}>MAGS 2048</Text>
-          {currentUser ? (
-            <Text style={styles.welcomeSubtitle}>Welcome back! 👋 {currentUser}</Text>
-          ) : (
-            <Text style={styles.welcomeSubtitle}>Welcome, Player! 🎮</Text>
-          )}
+          <View style={styles.profileHeaderRow}>
+            <TouchableOpacity style={styles.profileAvatarWrapper} onPress={() => setShowProfileModal(true)} activeOpacity={0.8}>
+              <Image
+                source={AVATAR_SOURCES[currentAvatar] || AVATAR_SOURCES.avatar_1}
+                style={styles.profileAvatar}
+              />
+            </TouchableOpacity>
+            <View style={styles.profileTextBlock}>
+              {currentUser ? (
+                <Text style={styles.welcomeSubtitle}>Welcome back! 👋 {currentUser}</Text>
+              ) : (
+                <Text style={styles.welcomeSubtitle}>Welcome, Player! 🎮</Text>
+              )}
+              <Text style={styles.profileHintText}>Tap avatar to edit</Text>
+            </View>
+          </View>
         </View>
 
         <Animated.View style={[styles.walletStatusPill, { transform: [{ scale: walletScaleAnim }] }]}>
@@ -323,17 +368,21 @@ export default function HomeScreen({ navigation }) {
           </View>
         ) : (
           <View style={styles.actionButtonsStack}>
-            <TouchableOpacity style={styles.primaryClaimBtn} onPress={() => commitRewardToWallet(false)}>
+            <Button3D style={[styles.primaryClaimBtn, styles.elevated, { backgroundColor: '#e76f51' }]}
+            edgeColor="#ab523c"
+            onPress={() => commitRewardToWallet(false)}>
               <Text style={styles.primaryClaimBtnText}>
                 Claim Single (+{immediateClaimValue} 🪙)
               </Text>
-            </TouchableOpacity>
+            </Button3D>
 
-            <TouchableOpacity style={styles.adClaimBtn} onPress={launchRewardedAdDoubleFlow}>
+            <Button3D style={[styles.adClaimBtn, styles.elevated, { backgroundColor: '#44bd7e' }]}
+            edgeColor="#2d7c53"
+            onPress={launchRewardedAdDoubleFlow}>
               <Text style={styles.adClaimBtnText}>
                 🎬 DOUBLE REWARD (+{immediateClaimValue * 2} 🪙)
               </Text>
-            </TouchableOpacity>
+            </Button3D>
           </View>
         )}
 
@@ -355,25 +404,38 @@ export default function HomeScreen({ navigation }) {
 
       {/* --- ACTION INTERFACE NAVIGATION CONTROLS --- */}
       <View style={styles.navigationMenuBlock}>
-        <TouchableOpacity style={styles.primaryMenuBtn} onPress={handlePlayPress}>
+        <Button3D style={[styles.primaryMenuBtn, { backgroundColor: '#f2a968' }]}
+        edgeColor="#f27c14"
+        onPress={handlePlayPress}>
           <Text style={styles.primaryMenuBtnText}>🕹 Start Active Match</Text>
-        </TouchableOpacity>
+        </Button3D>
 
-        <TouchableOpacity style={[styles.primaryMenuBtn, styles.secondaryMenuBtn]} onPress={() => navigation.navigate('Leaderboard')}>
+        <Button3D style={[styles.primaryMenuBtn, styles.secondaryMenuBtn, { backgroundColor: '#58b7d4' }]}
+        edgeColor="#448ba0"
+        onPress={() => navigation.navigate('Leaderboard')}>
           <Text style={styles.secondaryMenuBtnText}>🏆 Global Leaderboards</Text>
-        </TouchableOpacity>
+        </Button3D>
 
         {/* Condition evaluates cleanly using direct context flag to hide button */}
         {!isPremiumUser && !adsRemoved && (
-          <TouchableOpacity style={[styles.primaryMenuBtn, styles.secondaryMenuBtn]} onPress={() => navigation.navigate('Shop')}>
+          <Button3D style={[styles.primaryMenuBtn, styles.secondaryMenuBtn, { backgroundColor: '#edc22e' }]}
+          edgeColor="#c09403"
+          onPress={() => navigation.navigate('Shop')}>
             <Text style={styles.secondaryMenuBtnText}>👑 Coin Store & Upgrades</Text>
-          </TouchableOpacity>
+          </Button3D>
         )}
 
-        <TouchableOpacity style={styles.devResetButton} onPress={handleDevReset}>
+        <Button3D style={[styles.devResetButton, styles.elevated]} onPress={handleDevReset}>
           <Text style={styles.devResetText}>⚠️ CLEAR ALL DATA (NEW USER TEST)</Text>
-        </TouchableOpacity>
+        </Button3D>
       </View>
+
+      <UsernameModal
+        visible={showProfileModal}
+        onSave={handleProfileSave}
+        initialName={currentUser || ''}
+        initialAvatar={currentAvatar}
+      />
 
       {showRewardAdModal && (
         <View style={styles.adOverlayContainer}>
@@ -409,9 +471,13 @@ const styles = StyleSheet.create({
   walletStatusPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#bbada0', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, borderColor: '#fff' },
   walletTokenSymbol: { fontSize: 16, marginRight: 6 },
   walletBalanceText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
+  profileHeaderRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  profileAvatarWrapper: { width: 50, height: 50, borderRadius: 25, overflow: 'hidden', marginRight: 12, backgroundColor: '#eee4da', borderWidth: 1, borderColor: '#dcd1c4' },
+  profileAvatar: { width: '100%', height: '100%' },
+  profileTextBlock: { flexShrink: 1 },
+  profileHintText: { fontSize: 10, color: '#b2a189', marginTop: 2 },
 
-  calendarCard: { position: 'relative', width: width * 0.9, backgroundColor: '#eee4da', padding: 18, borderRadius: 12, marginBottom: 25, borderWidth: 1, borderColor: '#dcd1c4', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3 },
-  calendarHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(119,110,101,0.12)', paddingBottom: 8 },
+  calendarCard: { position: 'relative', width: width * 0.9, backgroundColor: '#eee4da', padding: 18, borderRadius: 12, marginBottom: 25, borderWidth: 1, borderColor: '#dcd1c4', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3 },  calendarHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(119,110,101,0.12)', paddingBottom: 8 },
   calendarCardTitle: { fontSize: 11, fontWeight: 'bold', color: '#776e65', letterSpacing: 0.3 },
   streakBadgeText: { fontSize: 10, fontWeight: 'bold', backgroundColor: '#8f7a66', color: '#fff', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   
@@ -445,6 +511,8 @@ const styles = StyleSheet.create({
 
   devResetButton: { width: '100%', marginTop: 12, paddingVertical: 10, borderWidth: 1, borderColor: '#e74c3c', borderRadius: 6, backgroundColor: 'rgba(231, 76, 60, 0.03)', alignItems: 'center', justifyContent: 'center' },
   devResetText: { color: '#e74c3c', fontSize: 10, fontWeight: 'bold', letterSpacing: 0.5 },
+
+  elevated: { elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.18, shadowRadius: 3 },
 
   adOverlayContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.88)', justifyContent: 'center', alignItems: 'center', zIndex: 9999 },
   adVideoBoxCard: { width: width * 0.85, backgroundColor: '#1a1a1a', padding: 20, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#333' },

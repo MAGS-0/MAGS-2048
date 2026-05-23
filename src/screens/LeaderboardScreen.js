@@ -9,6 +9,7 @@ import {
   Dimensions
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
+import Button3D from '../components/Button3D';
 import { fetchLeaderboard, fetchUserRank } from '../utils/firebase';
 import { getUsername } from '../utils/storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -108,13 +109,13 @@ export default function LeaderboardScreen({ navigation }) {
     <SafeAreaProvider>
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Button3D onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="close" size={30} color="#776e65" />
-          </TouchableOpacity>
+          </Button3D>
           <Text style={styles.headerTitle}>LEADERBOARD</Text>
-          <TouchableOpacity onPress={loadData} style={styles.backButton}>
+          <Button3D onPress={loadData} style={styles.backButton}>
             <Ionicons name="refresh" size={24} color="#776e65" />
-          </TouchableOpacity>
+          </Button3D>
         </View>
 
         {loading ? (
@@ -159,6 +160,7 @@ export default function LeaderboardScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#faf8ef' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10 },
+  backButton: { padding: 8, borderRadius: 10, backgroundColor: '#ffffff', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.16, shadowRadius: 3 },
   headerTitle: { fontSize: 22, fontWeight: 'bold', color: '#776e65' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   listContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 150 },

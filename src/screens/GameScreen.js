@@ -6,16 +6,17 @@ import { submitGlobalScore } from '../utils/firebase';
 import Tile from '../components/Tile';
 import Confetti from '../components/Confetti';
 import UsernameModal from '../components/UsernameModal';
+import Button3D from '../components/Button3D';
 import { useAds } from '../context/AdContext'; 
 
 const BannerAdMock = ({ onFailed, navigation }) => (
-  <TouchableOpacity style={styles.adBanner} onPress={() => navigation.navigate('Shop')}>
+  <Button3D style={styles.adBanner} onPress={() => navigation.navigate('Shop')}>
     <Text style={styles.adTag}>Ad Mock</Text>
     <Text style={styles.adBannerText}>Remove Ads + Daily Coins — $2.99</Text>
     <TouchableOpacity style={styles.adCloseBtn} onPress={(e) => { e.stopPropagation(); onFailed(); }}>
       <Text style={styles.adCloseText}>×</Text>
     </TouchableOpacity>
-  </TouchableOpacity>
+  </Button3D>
 );
 
 const InterstitialAdMock = ({ onClose }) => {
@@ -236,7 +237,7 @@ export default function GameScreen({ navigation }) {
     logGameEvent('ad_request', { type: 'rewarded_video_coin' });
 
     adTimerRef.current = setInterval(() => {
-      setCountdown((prev) => {
+      setAdCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(adTimerRef.current);
           return 0;
@@ -523,7 +524,7 @@ export default function GameScreen({ navigation }) {
             <Text style={styles.scoreLabel}>BEST</Text>
             <Text style={styles.scoreValue}>{highScore}</Text>
           </View>
-          <TouchableOpacity 
+          <Button3D
             style={[styles.scoreContainer, styles.coinWalletContainer]}
             onPress={() => {
               Alert.alert(
@@ -538,7 +539,7 @@ export default function GameScreen({ navigation }) {
           >
             <Text style={[styles.scoreLabel, styles.coinLabelText]}>GET 🪙</Text>
             <Text style={styles.coinValueText}>🪙 {coins}</Text>
-          </TouchableOpacity>
+          </Button3D>
         </View>
       </View>
 
@@ -589,7 +590,7 @@ export default function GameScreen({ navigation }) {
         <Text style={styles.powerUpsTitle}>POWER-UPS</Text>
         
         <View style={styles.powerUpRow}>
-          <TouchableOpacity 
+          <Button3D 
             style={[
               styles.powerUpBtn, 
               styles.undoBtn, 
@@ -601,9 +602,9 @@ export default function GameScreen({ navigation }) {
             <Text style={[styles.powerUpBtnText, history.length === 0 && styles.disabledBtnText]}>
               ↩ Undo  <Text style={styles.coinCostBadge}>1 🪙</Text>
             </Text>
-          </TouchableOpacity>
+          </Button3D>
 
-          <TouchableOpacity 
+          <Button3D 
             style={[
               styles.powerUpBtn, 
               styles.deleteBtn, 
@@ -615,11 +616,11 @@ export default function GameScreen({ navigation }) {
               {isDeleteMode ? "📭 Select Tile..." : "✕ Delete  "}
               {!isDeleteMode && <Text style={styles.coinCostBadge}>2 🪙</Text>}
             </Text>
-          </TouchableOpacity>
+          </Button3D>
         </View>
 
         <View style={styles.powerUpRow}>
-          <TouchableOpacity style={[styles.powerUpBtn, styles.homeBtn]} onPress={() => {
+          <Button3D style={[styles.powerUpBtn, styles.homeBtn]} onPress={() => {
             Alert.alert(
               "Start New Game?",
               "Are you sure you want to end this game? Your current progress will be lost.",
@@ -630,14 +631,14 @@ export default function GameScreen({ navigation }) {
             );
           }}>
             <Text style={styles.powerUpBtnText}>🔄Restart</Text>
-          </TouchableOpacity>
+          </Button3D>
           
-          <TouchableOpacity 
-            style={[styles.powerUpBtn, styles.settingsBtn]}
+          <Button3D 
+            style={[styles.powerUpBtn, styles.settingsBtn, { backgroundColor: '#707070' }]}
             onPress={() => setShowSettingsModal(true)}
           >
             <Text style={styles.powerUpBtnText}>⚙️ Settings</Text>
-          </TouchableOpacity>
+          </Button3D>
         </View>
       </View>
 
@@ -648,35 +649,35 @@ export default function GameScreen({ navigation }) {
             
             <View style={styles.settingRow}>
               <Text style={styles.settingLabel}>Sound Effects</Text>
-              <TouchableOpacity 
-                style={soundEnabled ? styles.toggleActive : styles.toggleInactive} 
+              <Button3D
+                style={soundEnabled ? styles.toggleActive : styles.toggleInactive}
                 onPress={() => setSoundEnabled(!soundEnabled)}
               >
                 <Text style={styles.toggleText}>{soundEnabled ? "ON" : "OFF"}</Text>
-              </TouchableOpacity>
+              </Button3D>
             </View>
 
             <View style={styles.settingRow}>
               <Text style={styles.settingLabel}>Haptic Feedback</Text>
-              <TouchableOpacity 
-                style={hapticEnabled ? styles.toggleActive : styles.toggleInactive} 
+              <Button3D
+                style={hapticEnabled ? styles.toggleActive : styles.toggleInactive}
                 onPress={() => setHapticEnabled(!hapticEnabled)}
               >
                 <Text style={styles.toggleText}>{hapticEnabled ? "ON" : "OFF"}</Text>
-              </TouchableOpacity>
+              </Button3D>
             </View>
 
-            <TouchableOpacity style={[styles.menuItemBtn, { backgroundColor: '#e1b024' }]} onPress={() => { setShowSettingsModal(false); navigation.navigate('Shop'); }}>
+            <Button3D style={[styles.menuItemBtn, { backgroundColor: '#e1b024' }]} onPress={() => { setShowSettingsModal(false); navigation.navigate('Shop'); }}>
               <Text style={styles.menuItemText}>👑 Open Game Shop</Text>
-            </TouchableOpacity>
+            </Button3D>
 
-            <TouchableOpacity style={styles.menuItemBtn} onPress={() => Alert.alert("How to Play", "Slide matching number blocks into each other to add them up and reach the 2048 tile!")}>
+            <Button3D style={styles.menuItemBtn} onPress={() => Alert.alert("How to Play", "Slide matching number blocks into each other to add them up and reach the 2048 tile!")}>
               <Text style={styles.menuItemText}>📖 How to Play Tutorial</Text>
-            </TouchableOpacity>
+            </Button3D>
 
-            <TouchableOpacity style={styles.closeSettingsBtn} onPress={() => setShowSettingsModal(false)}>
+            <Button3D style={styles.closeSettingsBtn} onPress={() => setShowSettingsModal(false)}>
               <Text style={styles.closeSettingsText}>Close</Text>
-            </TouchableOpacity>
+            </Button3D>
           </View>
         </View>
       )}
@@ -692,7 +693,7 @@ export default function GameScreen({ navigation }) {
               <Text style={styles.adVideoSubtitleText}>Do not close this window to claim reward.</Text>
             </View>
 
-            <TouchableOpacity 
+            <Button3D
               style={[styles.adRewardClaimBtn, adCountdown > 0 && styles.adRewardClaimBtnDisabled]}
               onPress={claimAdCoinReward}
               disabled={adCountdown > 0}
@@ -700,7 +701,7 @@ export default function GameScreen({ navigation }) {
               <Text style={styles.adRewardClaimBtnText}>
                 {adCountdown > 0 ? `⏳ Reward unlocks in ${adCountdown}s...` : '🎁 CLAIM +1 COIN'}
               </Text>
-            </TouchableOpacity>
+            </Button3D>
           </View>
         </View>
       )}
@@ -731,15 +732,15 @@ export default function GameScreen({ navigation }) {
             </View>
 
             {coins < 1 && (
-              <TouchableOpacity style={styles.gameOverWatchAdBtn} onPress={() => { setShowGameOverScreen(false); launchRewardedAdVideo(); }}>
+              <Button3D style={styles.gameOverWatchAdBtn} onPress={() => { setShowGameOverScreen(false); launchRewardedAdVideo(); }}>
                 <Text style={styles.gameOverWatchAdBtnText}>📺 Watch Video for Free +1 Coin</Text>
-              </TouchableOpacity>
+              </Button3D>
             )}
 
             <Text style={styles.gameOverHelpText}>Spend coins to purchase a lifeline power-up or restart clean:</Text>
 
             <View style={styles.gameOverBtnRow}>
-              <TouchableOpacity 
+              <Button3D 
                 style={[
                   styles.gameOverBtn, 
                   styles.undoBtn, 
@@ -751,9 +752,9 @@ export default function GameScreen({ navigation }) {
                 <Text style={styles.powerUpBtnText}>
                   ↩ Undo (1 🪙)
                 </Text>
-              </TouchableOpacity>
+              </Button3D>
 
-              <TouchableOpacity 
+              <Button3D 
                 style={[
                   styles.gameOverBtn,
                   styles.deleteBtn
@@ -763,17 +764,17 @@ export default function GameScreen({ navigation }) {
                 <Text style={styles.powerUpBtnText}>
                   ✕ Delete (2 🪙)
                 </Text>
-              </TouchableOpacity>
+              </Button3D>
             </View>
 
             <View style={styles.gameOverBtnRow}>
-              <TouchableOpacity style={[styles.gameOverBtn, styles.homeBtn]} onPress={resetGame}>
+              <Button3D style={[styles.gameOverBtn, styles.homeBtn]} onPress={resetGame}>
                 <Text style={styles.powerUpBtnText}>🔄Restart</Text>
-              </TouchableOpacity>
+              </Button3D>
 
-              <TouchableOpacity style={[styles.gameOverBtn, styles.settingsBtn]} onPress={() => { setShowGameOverScreen(false); navigation.navigate('Home'); }}>
+              <Button3D style={[styles.gameOverBtn, styles.settingsBtn]} onPress={() => { setShowGameOverScreen(false); navigation.navigate('Home'); }}>
                 <Text style={styles.powerUpBtnText}>🏠 Home Menu</Text>
-              </TouchableOpacity>
+              </Button3D>
             </View>
           </View>
         </View>
@@ -815,7 +816,7 @@ const styles = StyleSheet.create({
   powerUpsWrapper: { width: width - 40, marginTop: 20 },
   powerUpsTitle: { fontSize: 11, fontWeight: 'bold', color: '#bbada0', marginBottom: 6, letterSpacing: 0.5 },
   powerUpRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  powerUpBtn: { paddingVertical: 14, borderRadius: 6, width: '48.5%', alignItems: 'center', justifyContent: 'center' },
+  powerUpBtn: { paddingVertical: 14, borderRadius: 6, width: '48.5%', alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 4 },
   powerUpBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
   coinCostBadge: { backgroundColor: 'rgba(0,0,0,0.18)', fontSize: 12, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10, overflow: 'hidden', color: '#fff', fontWeight: 'bold' },
   
@@ -838,9 +839,9 @@ const styles = StyleSheet.create({
   toggleActive: { backgroundColor: '#8f7a66', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 4 },
   toggleInactive: { backgroundColor: '#e4dbd2', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 4 },
   toggleText: { color: '#ffffff', fontWeight: 'bold', fontSize: 13 },
-  menuItemBtn: { width: '100%', paddingVertical: 14, backgroundColor: '#bbada0', borderRadius: 6, alignItems: 'center', marginTop: 16 },
+  menuItemBtn: { width: '100%', paddingVertical: 14, backgroundColor: '#bbada0', borderRadius: 6, alignItems: 'center', marginTop: 16, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 4 },
   menuItemText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
-  closeSettingsBtn: { marginTop: 24, paddingVertical: 10, width: '100%', alignItems: 'center' },
+  closeSettingsBtn: { marginTop: 24, paddingVertical: 10, width: '100%', alignItems: 'center', backgroundColor: '#f1f1f1', borderRadius: 6, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.16, shadowRadius: 4 },
   closeSettingsText: { color: '#776e65', fontSize: 15, fontWeight: 'bold', opacity: 0.8 },
 
   adVideoCard: { width: width * 0.88, backgroundColor: '#1a1a1a', borderRadius: 12, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
@@ -849,7 +850,7 @@ const styles = StyleSheet.create({
   adVideoPlayheadIcon: { fontSize: 44, marginBottom: 10 },
   adVideoPlaybackTitle: { color: '#ffffff', fontSize: 15, fontWeight: 'bold', textAlign: 'center' },
   adVideoSubtitleText: { color: '#666', fontSize: 12, marginTop: 4, textAlign: 'center' },
-  adRewardClaimBtn: { width: '100%', backgroundColor: '#e1b024', paddingVertical: 15, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  adRewardClaimBtn: { width: '100%', backgroundColor: '#e1b024', paddingVertical: 15, borderRadius: 6, alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 4 },
   adRewardClaimBtnDisabled: { backgroundColor: '#333' },
   adRewardClaimBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 15 },
 
@@ -859,7 +860,7 @@ const styles = StyleSheet.create({
   interstitialMainIcon: { fontSize: 60, marginBottom: 15 },
   interstitialTitle: { fontSize: 22, fontWeight: 'bold', color: '#2c3e50', textAlign: 'center', marginBottom: 8 },
   interstitialSubtext: { fontSize: 14, color: '#95a5a6', textAlign: 'center', marginBottom: 30, paddingHorizontal: 10 },
-  interstitialCloseBtn: { width: '100%', backgroundColor: '#e74c3c', paddingVertical: 14, borderRadius: 8, alignItems: 'center' },
+  interstitialCloseBtn: { width: '100%', backgroundColor: '#e74c3c', paddingVertical: 14, borderRadius: 8, alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 4 },
   interstitialCloseBtnDisabled: { backgroundColor: '#bdc3c7' },
   interstitialCloseText: { color: '#ffffff', fontWeight: 'bold', fontSize: 16 },
 
@@ -875,10 +876,12 @@ const styles = StyleSheet.create({
   gameOverWalletLabel: { color: '#fffdf0', fontSize: 10, fontWeight: 'bold', letterSpacing: 0.5 },
   gameOverWalletValue: { color: '#ffffff', fontSize: 20, fontWeight: 'bold', marginTop: 2 },
 
-  gameOverWatchAdBtn: { width: '100%', backgroundColor: '#7c5bc4', paddingVertical: 12, borderRadius: 6, alignItems: 'center', marginBottom: 15 },
+  gameOverWatchAdBtn: { width: '100%', backgroundColor: '#7c5bc4', paddingVertical: 12, borderRadius: 6, alignItems: 'center', marginBottom: 15, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 4 },
   gameOverWatchAdBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 13 },
 
   gameOverHelpText: { color: '#776e65', fontSize: 13, textAlign: 'center', marginBottom: 20, opacity: 0.8, paddingHorizontal: 10 },
   gameOverBtnRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 12 },
-  gameOverBtn: { paddingVertical: 14, borderRadius: 6, width: '48.5%', alignItems: 'center', justifyContent: 'center' }
+  gameOverBtn: { paddingVertical: 14, borderRadius: 6, width: '48.5%', alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 4 }
 });
+
+
