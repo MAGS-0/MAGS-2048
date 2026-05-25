@@ -86,6 +86,7 @@ export default function UsernameModal({ visible, onSave, initialName = '', initi
               );
             })}
           </ScrollView>
+          <Text style={styles.avatarScrollHint}>Swipe to see more avatars →</Text>
 
           <TextInput
             style={styles.input}
@@ -148,18 +149,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    marginBottom: 18,
+    paddingRight: 26,
+    marginBottom: 8,
+  },
+  avatarScrollHint: {
+    width: '100%',
+    textAlign: 'right',
+    color: '#9BA7B0',
+    fontSize: 11,
+    marginBottom: 16,
+    fontStyle: 'italic',
   },
   avatarWrapper: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     backgroundColor: '#eee4da',
-    padding: 3,
+    padding: 4,
     borderWidth: 2,
     borderColor: 'transparent',
     position: 'relative',
-    marginRight: 12,
+    marginRight: 14,
   },
   avatarWrapperSelected: {
     borderColor: '#e1b024',

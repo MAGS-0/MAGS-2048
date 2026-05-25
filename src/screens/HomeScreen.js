@@ -5,7 +5,9 @@ import { getUsername, getUserAvatar, getCoins, saveCoins } from '../utils/storag
 import UsernameModal from '../components/UsernameModal';
 import Button3D from '../components/Button3D';
 import { useAds } from '../context/AdContext';
+import { BannerAdMock } from '../utils/admobMock';
 import { fetchRemoteBaseCoins } from '../utils/firebase';
+import { playCoinRewardSound } from '../utils/audioController';
 
 const { width, height } = Dimensions.get('window');
 
@@ -56,6 +58,7 @@ export default function HomeScreen({ navigation }) {
 
   const countdownTimerRef = useRef(null);
   const adTimerRef = useRef(null);
+  const [showAd, setShowAd] = useState(true);
 
   useEffect(() => {
     const initializeDashboard = async () => {
@@ -225,6 +228,7 @@ export default function HomeScreen({ navigation }) {
       const walletBalance = await getCoins() || 0;
       const newBalance = walletBalance + finalCoinPayout;
       await saveCoins(newBalance);
+      playCoinRewardSound(true, true);
 
       await AsyncStorage.setItem('mags_2048_last_daily_claim', Date.now().toString());
       
@@ -437,6 +441,12 @@ export default function HomeScreen({ navigation }) {
         initialAvatar={currentAvatar}
       />
 
+      <View style={styles.adWrapper}>
+        {!isPremiumUser && !adsRemoved && showAd && (
+          <BannerAdMock onFailed={() => setShowAd(false)} />
+        )}
+      </View>
+
       {showRewardAdModal && (
         <View style={styles.adOverlayContainer}>
           <View style={styles.adVideoBoxCard}>
@@ -476,6 +486,8 @@ const styles = StyleSheet.create({
   profileAvatar: { width: '100%', height: '100%' },
   profileTextBlock: { flexShrink: 1 },
   profileHintText: { fontSize: 10, color: '#b2a189', marginTop: 2 },
+
+  adWrapper: { width: width, minHeight: 50, marginVertical: 12, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0 },
 
   calendarCard: { position: 'relative', width: width * 0.9, backgroundColor: '#eee4da', padding: 18, borderRadius: 12, marginBottom: 25, borderWidth: 1, borderColor: '#dcd1c4', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3 },  calendarHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(119,110,101,0.12)', paddingBottom: 8 },
   calendarCardTitle: { fontSize: 11, fontWeight: 'bold', color: '#776e65', letterSpacing: 0.3 },

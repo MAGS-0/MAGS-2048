@@ -70,22 +70,28 @@ export const AdProvider = ({ children }) => {
     }
   };
 
+  const isInterstitialReady = () => {
+    return !!loaded && !!interstitial;
+  };
+
   const showInterstitial = () => {
     // If user purchased "Remove Ads", immediately block the ad from showing
     if (isAdsRemoved) {
       console.log("Premium Active: Interstitial blocked.");
-      return;
+      return false;
     }
 
     if (loaded && interstitial) {
       interstitial.show();
-    } else {
-      console.log("Ad note loaded or running in an unsupported Expo Go environment.");
+      return true;
     }
+
+    console.log("Ad not loaded or running in an unsupported Expo Go environment.");
+    return false;
   };
 
   return (
-    <AdContext.Provider value={{ showInterstitial, isAdsRemoved, setAdsRemovedStatus }}>
+    <AdContext.Provider value={{ showInterstitial, isInterstitialReady, isAdsRemoved, setAdsRemovedStatus }}>
       {children}
     </AdContext.Provider>
   );

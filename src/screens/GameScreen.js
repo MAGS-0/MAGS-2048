@@ -8,16 +8,7 @@ import Confetti from '../components/Confetti';
 import UsernameModal from '../components/UsernameModal';
 import Button3D from '../components/Button3D';
 import { useAds } from '../context/AdContext'; 
-
-const BannerAdMock = ({ onFailed, navigation }) => (
-  <Button3D style={styles.adBanner} onPress={() => navigation.navigate('Shop')}>
-    <Text style={styles.adTag}>Ad Mock</Text>
-    <Text style={styles.adBannerText}>Remove Ads + Daily Coins — $2.99</Text>
-    <TouchableOpacity style={styles.adCloseBtn} onPress={(e) => { e.stopPropagation(); onFailed(); }}>
-      <Text style={styles.adCloseText}>×</Text>
-    </TouchableOpacity>
-  </Button3D>
-);
+import { BannerAdMock } from '../utils/admobMock';
 
 const InterstitialAdMock = ({ onClose }) => {
   const [countdown, setCountdown] = useState(3);
@@ -56,17 +47,19 @@ const InterstitialAdMock = ({ onClose }) => {
         </TouchableOpacity>
       </View>
     </View>
+
   );
 };
 
 import { logGameEvent } from '../utils/analytics';
-import { 
-  preloadGameAudio, 
-  playSwipeSound, 
-  playMergeSound, 
-  playPowerUpSound, 
-  playGameStateSound 
-} from '../utils/audioController';
+  import { 
+    preloadGameAudio, 
+    playSwipeSound, 
+    playMergeSound, 
+    playPowerUpSound, 
+    playGameStateSound,
+    playHighScoreSound
+  } from '../utils/audioController';
 
 const { width } = Dimensions.get('window');
 const CELL_SIZE = (width - 40) / 4;
@@ -121,12 +114,6 @@ export default function GameScreen({ navigation }) {
   const isAdsRemoved = adContext?.isAdsRemoved || adContext?.adsRemoved;
   const hideInterstitialAction = adContext?.hideInterstitialAction;
 
-  const checkInterstitialReady = () => {
-    if (typeof adContext?.isInterstitialReadyAction === 'function') return adContext.isInterstitialReadyAction();
-    if (typeof adContext?.isInterstitialReady === 'function') return adContext.isInterstitialReady();
-    return false;
-  };
-
   const [grid, setGrid] = useState(initializeGrid());
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
@@ -150,6 +137,11 @@ export default function GameScreen({ navigation }) {
   const adTimerRef = useRef(null);
 
   const [showAd, setShowAd] = useState(true);
+  const [showInterstitialMock, setShowInterstitialMock] = useState(false);
+  const [isNewUserTutorial, setIsNewUserTutorial] = useState(false);
+  const [powerUpMoveCount, setPowerUpMoveCount] = useState(0);
+  const [undoTutorialShown, setUndoTutorialShown] = useState(false);
+  const [deleteTutorialShown, setDeleteTutorialShown] = useState(false);
 
   const [showGameOverScreen, setShowGameOverScreen] = useState(false);
 
@@ -162,6 +154,7 @@ export default function GameScreen({ navigation }) {
       const storedCoins = await getCoins();
       if (storedCoins === null) {
         setCoins(5);
+        setIsNewUserTutorial(true);
         await saveCoins(5);
         Alert.alert(
           "🎁 Welcome Bonus!",
@@ -339,7 +332,35 @@ export default function GameScreen({ navigation }) {
         playSwipeSound(direction, soundEnabled, hapticEnabled);
       }
 
-      if (milestoneTileFound >= 128) {
+      const nextMoveCount = powerUpMoveCount + 1;
+      setPowerUpMoveCount(nextMoveCount);
+      if (isNewUserTutorial && !undoTutorialShown && nextMoveCount === 1) {
+        setUndoTutorialShown(true);
+        setTimeout(() => {
+          Alert.alert(
+            'Power-Up Tip',
+            'Great first move! Use your free coin by tapping the Undo button to revert it and learn how the power-up works.',
+            [
+              { text: 'Later', style: 'cancel' },
+              { text: 'Try Undo', onPress: handleUndo }
+            ]
+          );
+        }, 200);
+      } else if (isNewUserTutorial && undoTutorialShown && !deleteTutorialShown && nextMoveCount === 3) {
+        setDeleteTutorialShown(true);
+        setTimeout(() => {
+          Alert.alert(
+            'Power-Up Tip',
+            'Nice progress! Now try the Delete power-up to remove a tile and keep your game going.',
+            [
+              { text: 'Later', style: 'cancel' },
+              { text: 'Try Delete', onPress: toggleDeleteMode }
+            ]
+          );
+        }, 200);
+      }
+
+      if (milestoneTileFound >= 2048) {
         const updatedCoins = coins + 1;
         await updateWalletCoins(updatedCoins);
         
@@ -370,6 +391,7 @@ export default function GameScreen({ navigation }) {
       saveGameState(nextGrid, nextScore);
 
       if (nextScore > highScore) {
+        playHighScoreSound(soundEnabled, hapticEnabled);
         setHighScore(nextScore);
         saveHighScore(nextScore);
       }
@@ -387,6 +409,22 @@ export default function GameScreen({ navigation }) {
           await submitGlobalScore(username, nextScore, '4x4');
         } else {
           setShowNameModal(true);
+        }
+
+        if (!isAdsRemoved) {
+          const hasReadyInterstitial = typeof adContext?.isInterstitialReady === 'function'
+            ? adContext.isInterstitialReady()
+            : false;
+
+          if (typeof adContext?.showInterstitial === 'function' && hasReadyInterstitial) {
+            try {
+              adContext.showInterstitial();
+            } catch (e) {
+              setShowInterstitialMock(true);
+            }
+          } else {
+            setShowInterstitialMock(true);
+          }
         }
 
         setShowGameOverScreen(true);
@@ -586,6 +624,17 @@ export default function GameScreen({ navigation }) {
         </View>
       </View>
 
+      {/* <View style={styles.adPromoWrapper}>
+        {!isAdsRemoved && (
+          <Button3D style={styles.adPromoBtn} onPress={() => navigation.navigate('Shop')}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.adTag}>Ad Mock</Text>
+              <Text style={styles.adPromoText}>Remove Ads + Daily Coins — $2.99</Text>
+            </View>
+          </Button3D>
+        )}
+      </View> */}
+
       <View style={styles.powerUpsWrapper}>
         <Text style={styles.powerUpsTitle}>POWER-UPS</Text>
         
@@ -671,7 +720,7 @@ export default function GameScreen({ navigation }) {
               <Text style={styles.menuItemText}>👑 Open Game Shop</Text>
             </Button3D>
 
-            <Button3D style={styles.menuItemBtn} onPress={() => Alert.alert("How to Play", "Slide matching number blocks into each other to add them up and reach the 2048 tile!")}>
+            <Button3D style={styles.menuItemBtn} onPress={() => Alert.alert("How to Play", "Slide matching number blocks into each other to add them up to reach the 2048 tile! This earns you +1 coins in reward!")}>
               <Text style={styles.menuItemText}>📖 How to Play Tutorial</Text>
             </Button3D>
 
@@ -706,11 +755,12 @@ export default function GameScreen({ navigation }) {
         </View>
       )}
 
-      {checkInterstitialReady() && showGameOverScreen && (
+      {showInterstitialMock && showGameOverScreen && (
         <InterstitialAdMock onClose={() => {
           if (typeof hideInterstitialAction === 'function') {
             hideInterstitialAction();
           }
+          setShowInterstitialMock(false);
         }} />
       )}
 
@@ -782,6 +832,16 @@ export default function GameScreen({ navigation }) {
 
       <Confetti active={showConfetti} />
       <UsernameModal visible={showNameModal} onSave={handleNameSave} />
+      <View style={styles.adWrapperBottom}>
+        {!isAdsRemoved && (
+          <>
+            <Button3D style={styles.removeAdsBtn} onPress={() => navigation.navigate('Shop')}>
+              <Text style={styles.removeAdsBtnText}>Remove Ads — Open Shop</Text>
+            </Button3D>
+            {showAd && <BannerAdMock onFailed={() => setShowAd(false)} />}
+          </>
+        )}
+      </View>
     </View>
   );
 }
@@ -801,9 +861,9 @@ const styles = StyleSheet.create({
   coinLabelText: { color: '#ffffff', opacity: 0.95 },
   coinValueText: { color: '#ffffff', fontSize: 14, fontWeight: 'bold' },
 
-  adWrapper: { width: width - 40, minHeight: 50, marginVertical: 12, justifyContent: 'center', alignItems: 'center' },
-  adBanner: { flexDirection: 'row', backgroundColor: '#7c5bc4', width: '100%', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'space-between' },
-  adTag: { backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff', fontSize: 10, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, fontWeight: 'bold' },
+  adWrapper: { width: width, minHeight: 50, marginVertical: 12, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0 },
+  adBanner: { flexDirection: 'row', backgroundColor: '#7c5bc4', width: width, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'space-between' },
+  adTag: { backgroundColor: 'rgba(255, 255, 255, 0.2)', color: '#fff', fontSize: 10, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, fontWeight: 'bold' },
   adBannerText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
   adCloseBtn: { paddingHorizontal: 4 },
   adCloseText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold', opacity: 0.7 },
@@ -863,6 +923,10 @@ const styles = StyleSheet.create({
   interstitialCloseBtn: { width: '100%', backgroundColor: '#e74c3c', paddingVertical: 14, borderRadius: 8, alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 4 },
   interstitialCloseBtnDisabled: { backgroundColor: '#bdc3c7' },
   interstitialCloseText: { color: '#ffffff', fontWeight: 'bold', fontSize: 16 },
+
+  adWrapperBottom: { width: width, paddingHorizontal: 0, paddingBottom: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  removeAdsBtn: { width: width - 40, backgroundColor: '#e1b024', paddingVertical: 10, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  removeAdsBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
 
   gameOverCard: { width: width * 0.85, backgroundColor: '#faf8ef', padding: 24, borderRadius: 12, alignItems: 'center', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
   gameOverEmoji: { fontSize: 42, marginBottom: 5 },

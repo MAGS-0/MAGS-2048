@@ -110,8 +110,8 @@ const executeFeedback = async (soundKey, hapticStyle, soundOn, hapticOn) => {
 export const playSwipeSound = (direction, soundOn, hapticOn) => {
   const isVertical = direction === 'up' || direction === 'down';
   executeFeedback(
-    isVertical ? 'swipe_v' : 'swipe_h',
-    'light', 
+    null,
+    'heavy', 
     soundOn,
     hapticOn
   );
@@ -120,7 +120,7 @@ export const playSwipeSound = (direction, soundOn, hapticOn) => {
 export const playMergeSound = (highestTileValue, soundOn, hapticOn) => {
   // If the tile is less than 512, safely fall back to a generic swipe sound to stay quiet
   if (highestTileValue < 512) {
-    executeFeedback(null, 'light', soundOn, hapticOn);
+    executeFeedback(null, 'medium', soundOn, hapticOn);
     return;
   }
 
@@ -150,4 +150,16 @@ export const playGameStateSound = (state, soundOn, hapticOn) => {
   } else if (state === 'gameover') {
     executeFeedback('gameover', 'heavy', soundOn, hapticOn);
   }
+};
+
+export const playHighScoreSound = (soundOn, hapticOn) => {
+  executeFeedback(null, 'heavy', soundOn, hapticOn);
+};
+
+export const playCoinRewardSound = (soundOn, hapticOn) => {
+  executeFeedback(null, 'medium', soundOn, hapticOn);
+};
+
+export const playPremiumUnlockedSound = (soundOn, hapticOn) => {
+  executeFeedback(null, 'heavy', soundOn, hapticOn);
 };

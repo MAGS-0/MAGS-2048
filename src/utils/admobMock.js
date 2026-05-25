@@ -6,12 +6,11 @@ const { width } = Dimensions.get('window');
 // 1. Safe Mock Banner for Expo Go testing
 export const BannerAdMock = ({ onFailed }) => {
   return (
-    <View style={styles.adBanner}>
-      <Text style={styles.adTag}>Ad Mock</Text>
-      <Text style={styles.adBannerText}>Remove Ads — $2.99</Text>
-      <TouchableOpacity style={styles.adCloseBtn} onPress={onFailed}>
-        <Text style={styles.adCloseText}>×</Text>
-      </TouchableOpacity>
+    <View style={styles.adBanner} pointerEvents="none">
+      <View style={styles.adInner}>
+        <Text style={styles.adTag}>Test Ad</Text>
+        <Text style={styles.adBannerText}>AdMob Banner — ca-app-pub-3940256099942544/6300978111</Text>
+      </View>
     </View>
   );
 };
@@ -26,9 +25,8 @@ export const TestIds = {
 };
 
 const styles = StyleSheet.create({
-  adBanner: { flexDirection: 'row', backgroundColor: '#7c5bc4', width: width - 40, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'space-between' },
-  adTag: { backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff', fontSize: 10, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, fontWeight: 'bold' },
-  adBannerText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
-  adCloseBtn: { paddingHorizontal: 4 },
-  adCloseText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold', opacity: 0.7 }
+  adBanner: { width: width, backgroundColor: '#f2f2f2', paddingVertical: 8, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderTopWidth: 1, borderTopColor: '#e0e0e0' },
+  adInner: { width: width - 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' },
+  adTag: { backgroundColor: '#dcdcdc', color: '#333', fontSize: 11, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 3, fontWeight: '700', marginRight: 8 },
+  adBannerText: { color: '#333', fontWeight: '600', fontSize: 13 },
 });

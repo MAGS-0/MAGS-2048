@@ -10,6 +10,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import Button3D from '../components/Button3D';
+import { useAds } from '../context/AdContext';
+import { BannerAdMock } from '../utils/admobMock';
 import { fetchLeaderboard, fetchUserRank } from '../utils/firebase';
 import { getUsername } from '../utils/storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +19,8 @@ import { Ionicons } from '@expo/vector-icons';
 const { width } = Dimensions.get('window');
 
 export default function LeaderboardScreen({ navigation }) {
+  const { adsRemoved } = useAds();
+  const [showAd, setShowAd] = useState(true);
   const [loading, setLoading] = useState(true);
   const [leaderboard, setLeaderboard] = useState([]);
   const [userRank, setUserRank] = useState(null);
@@ -150,6 +154,11 @@ export default function LeaderboardScreen({ navigation }) {
                 </View>
               </View>
             )}
+            <View style={styles.adWrapper}>
+              {!adsRemoved && showAd && (
+                <BannerAdMock onFailed={() => setShowAd(false)} />
+              )}
+            </View>
           </View>
         )}
       </SafeAreaView>
@@ -186,5 +195,6 @@ const styles = StyleSheet.create({
   scoreText: { fontSize: 16, fontWeight: 'bold', color: '#776e65' },
   scoreTextWhite: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
   stickyFooter: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: '#faf8ef', padding: 20, borderTopWidth: 2, borderTopColor: '#bbada0' },
-  myStickyRow: { backgroundColor: '#8f7a66', marginBottom: 0, elevation: 5 }
+  myStickyRow: { backgroundColor: '#8f7a66', marginBottom: 0, elevation: 5 },
+  adWrapper: { width: width, minHeight: 50, marginVertical: 12, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0 },
 });

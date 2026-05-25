@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Button3D from '../components/Button3D';
 import { useAds } from '../context/AdContext';
+import { BannerAdMock } from '../utils/admobMock';
 import { getCoins, saveCoins } from '../utils/storage';
 import { logGameEvent } from '../utils/analytics';
 
@@ -14,6 +16,7 @@ export default function ShopScreen({ navigation }) {
   // CRITICAL FIX: Changed from isAdsRemoved to align exactly with your context state tracking property
   const { adsRemoved, setAdsRemovedStatus } = useAds();
   const [isPurchasing, setIsPurchasing] = useState(false);
+  const [showAd, setShowAd] = useState(true);
 
   const handlePurchase = async () => {
     if (adsRemoved) {
@@ -37,6 +40,7 @@ export default function ShopScreen({ navigation }) {
         await saveCoins(newCoinBalance);
 
         logGameEvent('iap_success', { product_id: 'com.mags2048.remove_ads_daily_coins', new_balance: newCoinBalance });
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
         setIsPurchasing(false);
 
@@ -113,6 +117,11 @@ export default function ShopScreen({ navigation }) {
             Purchases simulate real app store endpoints safely within this build phase.
           </Text>
         </View>
+        <View style={styles.adWrapper}>
+          {!adsRemoved && showAd && (
+            <BannerAdMock onFailed={() => setShowAd(false)} />
+          )}
+        </View>
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -143,5 +152,6 @@ const styles = StyleSheet.create({
   buyButton: { width: '100%', backgroundColor: '#8f7a66', paddingVertical: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 4 },
   disabledBuyButton: { backgroundColor: '#bbada0' },
   buyButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold', letterSpacing: 0.5 },
-  footerLegal: { fontSize: 11, color: '#bbada0', textAlign: 'center', marginTop: 40, paddingHorizontal: 20 }
+  footerLegal: { fontSize: 11, color: '#bbada0', textAlign: 'center', marginTop: 40, paddingHorizontal: 20 },
+  adWrapper: { width: width, minHeight: 50, marginVertical: 12, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0 },
 });
