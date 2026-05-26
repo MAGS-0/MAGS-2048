@@ -93,10 +93,11 @@ export const fetchUserRank = async (username, gridType = '4x4') => {
   }
 };
 // Add this to the very bottom of your src/utils/firebase.js file
-import { ref, get } from 'firebase/database';
+import { getDatabase, ref, get } from 'firebase/database';
 
 export const fetchRemoteBaseCoins = async () => {
   try {
+    const database = getDatabase();
     // Looks for a simple 'config/daily_base_coin' entry in your Realtime Database
     const dbRef = ref(database, 'config/daily_base_coin');
     const snapshot = await get(dbRef);
