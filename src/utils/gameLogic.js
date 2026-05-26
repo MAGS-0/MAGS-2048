@@ -40,7 +40,8 @@ const slideAndMerge = (row) => {
     if (next && current.value === next.value) {
       const newValue = current.value * 2;
       score += newValue;
-      result.push({ id: uid(), value: newValue });
+      // Keep the leading tile as the primary, and track the trailing tile as the merged contributor
+      result.push({ ...current, value: newValue, mergedId: next.id });
       i++;
     } else {
       result.push({ ...current });
@@ -85,7 +86,7 @@ export const moveGrid = (grid, direction) => {
       }
     }
   }
-  return { grid: changed ? spawnTile(newGrid) : newGrid, score: totalScore, changed };
+  return { grid: newGrid, score: totalScore, changed };
 }
 export const getPreviousState = (history) => {
   if (history.length > 1) {

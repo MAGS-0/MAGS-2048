@@ -274,33 +274,6 @@ export default function HomeScreen({ navigation }) {
     navigation.navigate('Game');
   };
 
-  const handleDevReset = async () => {
-    try {
-      await setAdsRemovedStatus(false);
-      await AsyncStorage.removeItem('mags_2048_coins');
-      await AsyncStorage.removeItem('@mags_2048_username');
-      await AsyncStorage.removeItem('@mags_2048_user_avatar');
-      await AsyncStorage.removeItem('mags_2048_last_daily_claim');
-      await AsyncStorage.removeItem('mags_2048_daily_streak_count');
-      await AsyncStorage.removeItem('mags_2048_ads_removed');
-      
-      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-      if (adTimerRef.current) clearInterval(adTimerRef.current);
-      
-      setIsRewardClaimed(false);
-      setCurrentStreak(1);
-      setWalletCoins(0);
-      setCurrentUser(null);
-      setCurrentAvatar('avatar_1');
-      setCountdownText('');
-      setIsPremiumUser(false);
-      
-      Alert.alert("🛠️ Test Ecosystem Reset", "All parameters flushed cleanly.");
-    } catch (e) {
-      console.log(e);
-    }
-  };
-
   const immediateClaimValue = calculateRewardPayout(currentStreak);
 
   // Dynamic key attached to component ensures forceful component re-mount/render when premium state updates
@@ -428,10 +401,6 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.secondaryMenuBtnText}>👑 Coin Store & Upgrades</Text>
           </Button3D>
         )}
-
-        <Button3D style={[styles.devResetButton, styles.elevated]} onPress={handleDevReset}>
-          <Text style={styles.devResetText}>⚠️ CLEAR ALL DATA (NEW USER TEST)</Text>
-        </Button3D>
       </View>
 
       <UsernameModal
@@ -440,12 +409,6 @@ export default function HomeScreen({ navigation }) {
         initialName={currentUser || ''}
         initialAvatar={currentAvatar}
       />
-
-      <View style={styles.adWrapper}>
-        {!isPremiumUser && !adsRemoved && showAd && (
-          <BannerAdMock onFailed={() => setShowAd(false)} />
-        )}
-      </View>
 
       {showRewardAdModal && (
         <View style={styles.adOverlayContainer}>
@@ -468,6 +431,12 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
       )}
+
+      <View style={styles.adWrapper}>
+        {!isPremiumUser && !adsRemoved && showAd && (
+          <BannerAdMock onFailed={() => setShowAd(false)} />
+        )}
+      </View>
     </View>
   );
 }
@@ -487,7 +456,7 @@ const styles = StyleSheet.create({
   profileTextBlock: { flexShrink: 1 },
   profileHintText: { fontSize: 10, color: '#b2a189', marginTop: 2 },
 
-  adWrapper: { width: width, minHeight: 50, marginVertical: 12, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0 },
+  adWrapper: { width: width, minHeight: 50, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0, marginTop: 'auto', paddingBottom: 8 },
 
   calendarCard: { position: 'relative', width: width * 0.9, backgroundColor: '#eee4da', padding: 18, borderRadius: 12, marginBottom: 25, borderWidth: 1, borderColor: '#dcd1c4', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3 },  calendarHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(119,110,101,0.12)', paddingBottom: 8 },
   calendarCardTitle: { fontSize: 11, fontWeight: 'bold', color: '#776e65', letterSpacing: 0.3 },

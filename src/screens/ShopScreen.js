@@ -29,11 +29,9 @@ export default function ShopScreen({ navigation }) {
 
     setTimeout(async () => {
       try {
-        // 1. Persist the state globally inside the global state tree context
+        // Persist the state globally inside the global state tree context 
+        // and unified storage via the context method
         await setAdsRemovedStatus(true);
-        
-        // 2. CRITICAL LINK: Back up to persistent storage so the HomeScreen focus hook can read it instantly
-        await AsyncStorage.setItem('mags_2048_ads_removed', 'true');
 
         const currentCoins = await getCoins() || 0;
         const newCoinBalance = currentCoins + 10;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Dimensions, PanResponder, Alert, TouchableOpacity, Animated } from 'react-native';
-import { initializeGrid, moveGrid, isGameOver } from '../utils/gameLogic';
+import { StyleSheet, View, Text, Dimensions, PanResponder, Alert, TouchableOpacity, Animated, Easing } from 'react-native';
+import { initializeGrid, moveGrid, isGameOver, spawnTile } from '../utils/gameLogic';
 import { saveGameState, loadGameState, getHighScore, saveHighScore, saveUsername, getUsername, saveCoins, getCoins } from '../utils/storage';
 import { submitGlobalScore } from '../utils/firebase';
 import Tile from '../components/Tile';
@@ -9,47 +9,6 @@ import UsernameModal from '../components/UsernameModal';
 import Button3D from '../components/Button3D';
 import { useAds } from '../context/AdContext'; 
 import { BannerAdMock } from '../utils/admobMock';
-
-const InterstitialAdMock = ({ onClose }) => {
-  const [countdown, setCountdown] = useState(3);
-  const timerRef = useRef(null);
-
-  useEffect(() => {
-    timerRef.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timerRef.current);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timerRef.current);
-  }, []);
-
-  return (
-    <View style={styles.interstitialOverlay}>
-      <View style={styles.interstitialContainer}>
-        <Text style={styles.interstitialBadge}>SPONSOR INTERSTITIAL AD</Text>
-        <Text style={styles.interstitialMainIcon}>🎬</Text>
-        <Text style={styles.interstitialTitle}>MAGS Premium Ad Network</Text>
-        <Text style={styles.interstitialSubtext}>Full-screen interstitial showing at game break point.</Text>
-        
-        <TouchableOpacity 
-          style={[styles.interstitialCloseBtn, countdown > 0 && styles.interstitialCloseBtnDisabled]}
-          onPress={onClose}
-          disabled={countdown > 0}
-        >
-          <Text style={styles.interstitialCloseText}>
-            {countdown > 0 ? `Skip in ${countdown}s` : 'Close Ad ✕'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-
-  );
-};
 
 import { logGameEvent } from '../utils/analytics';
   import { 
@@ -63,6 +22,7 @@ import { logGameEvent } from '../utils/analytics';
 
 const { width } = Dimensions.get('window');
 const CELL_SIZE = (width - 40) / 4;
+const TILE_SLIDE_DURATION = 150; // Optimized for snappy gameplay feel
 
 const convertNumericGridToObjects = (numericGrid) => {
   if (!Array.isArray(numericGrid)) return numericGrid;
@@ -72,13 +32,16 @@ const convertNumericGridToObjects = (numericGrid) => {
 };
 
 // --- HELPER COMPONENT FOR SMOOTH SLIDING WRAPPERS ---
-function AnimatedTileWrapper({ r, c, isDeleteMode, onTileSelect, children }) {
-  const animatedPos = useRef(new Animated.ValueXY({ x: c * CELL_SIZE, y: r * CELL_SIZE })).current;
+function AnimatedTileWrapper({ r, c, fromR, fromC, isDeleteMode, onTileSelect, children }) {
+  const startX = (fromC !== undefined ? fromC : c) * CELL_SIZE;
+  const startY = (fromR !== undefined ? fromR : r) * CELL_SIZE;
+  const animatedPos = useRef(new Animated.ValueXY({ x: startX, y: startY })).current;
 
   useEffect(() => {
     Animated.timing(animatedPos, {
       toValue: { x: c * CELL_SIZE, y: r * CELL_SIZE },
-      duration: 150, // Crisp swiping speed match
+      duration: TILE_SLIDE_DURATION,
+      easing: Easing.out(Easing.quad), // Starts fast, slows down at the end
       useNativeDriver: true,
     }).start();
   }, [r, c]);
@@ -111,7 +74,7 @@ function AnimatedTileWrapper({ r, c, isDeleteMode, onTileSelect, children }) {
 
 export default function GameScreen({ navigation }) {
   const adContext = useAds();
-  const isAdsRemoved = adContext?.isAdsRemoved || adContext?.adsRemoved;
+  const isAdsRemoved = adContext?.adsRemoved;
   const hideInterstitialAction = adContext?.hideInterstitialAction;
 
   const [grid, setGrid] = useState(initializeGrid());
@@ -144,8 +107,10 @@ export default function GameScreen({ navigation }) {
   const [deleteTutorialShown, setDeleteTutorialShown] = useState(false);
 
   const [showGameOverScreen, setShowGameOverScreen] = useState(false);
+  const [mergingGhosts, setMergingGhosts] = useState([]);
 
   const scoreBounce = useRef(new Animated.Value(1)).current;
+  const isAnimating = useRef(false);
 
   useEffect(() => {
     const init = async () => {
@@ -280,36 +245,32 @@ export default function GameScreen({ navigation }) {
   };
 
   const handleMove = async (direction) => {
-    if (isDeleteMode || showRewardedAdModal || showGameOverScreen) return;
+    // Prevents move processing if board is locked, in delete mode, or game is over
+    if (isDeleteMode || showRewardedAdModal || showGameOverScreen || isAnimating.current === true) return;
 
-    const oldGrid = JSON.parse(JSON.stringify(grid));
     const result = moveGrid(grid, direction);
-    
+
     if (result.changed) {
+      isAnimating.current = true;
+
+      const oldGrid = JSON.parse(JSON.stringify(grid));
+      
+      // 1. Group immediate state resets to prevent "ghost" animations from previous turns
+      setNewTileCoord(null);
+      setMergedCoords([]);
+      setMergingGhosts([]);
       setHistory(prev => [...prev, { grid: oldGrid, score }]);
       
-      const nextScore = score + result.score;
-      const nextGrid = result.grid;
-
-      let newCoord = null;
-      let merges = [];
-      let milestoneTileFound = 0;
-
-      nextGrid.forEach((row, r) => {
-        row.forEach((cell, c) => {
-          if ((oldGrid[r][c] === null || oldGrid[r][c] === 0) && nextGrid[r][c] !== null) {
-            newCoord = `${r}-${c}`;
-          }
-        });
-      });
+      const slidGrid = result.grid;
 
       const oldCounts = {};
       const nextCounts = {};
+      let milestoneTileFound = 0;
 
       for (let r = 0; r < 4; r++) {
         for (let c = 0; c < 4; c++) {
           const valOld = oldGrid[r][c] ? oldGrid[r][c].value : 0;
-          const valNext = nextGrid[r][c] ? nextGrid[r][c].value : 0;
+          const valNext = slidGrid[r][c] ? slidGrid[r][c].value : 0;
           if (valOld > 0) oldCounts[valOld] = (oldCounts[valOld] || 0) + 1;
           if (valNext > 0) nextCounts[valNext] = (nextCounts[valNext] || 0) + 1;
         }
@@ -331,6 +292,110 @@ export default function GameScreen({ navigation }) {
       } else {
         playSwipeSound(direction, soundEnabled, hapticEnabled);
       }
+
+      const nextScore = score + result.score;
+
+      // IMPROVED: Identify merged tiles by checking if their value increased relative to their own ID's previous value
+      const currentMergedCoords = [];
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          const newTile = slidGrid[r][c];
+          if (newTile) {
+            // Find this specific tile in the old grid by ID
+            const oldTile = oldGrid.flat().find(t => t && t.id === newTile.id);
+            if (oldTile && newTile.value > oldTile.value) {
+              currentMergedCoords.push(`${r}-${c}`);
+            }
+          }
+        }
+      }
+
+      // Identify "Ghost" tiles (the trailing tiles in a merge) to animate them alongside the main tile
+      const ghosts = [];
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          const tile = slidGrid[r][c];
+          if (tile && tile.mergedId) {
+            // Find the original (source) position of the merged contributor
+            for (let or = 0; or < 4; or++) {
+              for (let oc = 0; oc < 4; oc++) {
+                if (oldGrid[or][oc] && oldGrid[or][oc].id === tile.mergedId) {
+                  ghosts.push({ ...oldGrid[or][oc], sourceR: or, sourceC: oc, targetR: r, targetC: c });
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // PHASE 1: Update grid and merge state simultaneously for Phase 1 render
+      setGrid(slidGrid);
+      setScore(nextScore);
+      setMergedCoords(currentMergedCoords);
+      setMergingGhosts(ghosts);
+      if (result.score > 0) triggerScoreAnimation();
+
+      // PHASE 2: Delay spawn until sliding finishes (Increased buffer for reliability)
+      setTimeout(async () => {
+        try {
+          const finalGrid = spawnTile(slidGrid);
+          
+          let newCoord = null;
+          finalGrid.forEach((row, r) => {
+            row.forEach((cell, c) => {
+              if (slidGrid[r][c] === null && finalGrid[r][c] !== null) {
+                newCoord = `${r}-${c}`;
+              }
+            });
+          });
+
+          // Group Phase 2 updates to ensure they happen in one render
+          setGrid(finalGrid);
+          setNewTileCoord(newCoord);
+          setMergedCoords([]); 
+          setMergingGhosts([]);
+          saveGameState(finalGrid, nextScore);
+
+          // Check for Game Over only AFTER the tile has spawned
+          if (isGameOver(finalGrid)) {
+            logGameEvent('game_over', {
+              final_score: nextScore,
+              highest_score_record: Math.max(nextScore, highScore),
+              total_moves_played: history.length + 1
+            });
+
+            playGameStateSound('gameover', soundEnabled, hapticEnabled);
+
+            if (username) {
+              await submitGlobalScore(username, nextScore, '4x4');
+            } else {
+              setShowNameModal(true);
+            }
+
+            if (!isAdsRemoved) {
+              const hasReadyInterstitial = typeof adContext?.isInterstitialReady === 'function'
+                ? adContext.isInterstitialReady()
+                : false;
+
+              if (typeof adContext?.showInterstitial === 'function' && hasReadyInterstitial) {
+                try {
+                  adContext.showInterstitial();
+                } catch (e) {
+                  setShowInterstitialMock(true);
+                }
+              } else {
+                setShowInterstitialMock(true);
+              }
+            }
+            setShowGameOverScreen(true);
+          }
+        } catch (error) {
+          console.error("Critical Animation Loop Error:", error);
+        } finally {
+          // ALWAYS unlock the board, even if Firebase or Ads crash
+          isAnimating.current = false;
+        }
+      }, TILE_SLIDE_DURATION + 40); // Increased buffer to 40ms for smoother handoff
 
       const nextMoveCount = powerUpMoveCount + 1;
       setPowerUpMoveCount(nextMoveCount);
@@ -382,52 +447,10 @@ export default function GameScreen({ navigation }) {
         }
       }
 
-      setNewTileCoord(newCoord);
-      setMergedCoords(merges);
-      if (result.score > 0) triggerScoreAnimation();
-
-      setGrid(nextGrid);
-      setScore(nextScore);
-      saveGameState(nextGrid, nextScore);
-
       if (nextScore > highScore) {
         playHighScoreSound(soundEnabled, hapticEnabled);
         setHighScore(nextScore);
         saveHighScore(nextScore);
-      }
-
-      if (isGameOver(nextGrid)) {
-        logGameEvent('game_over', {
-          final_score: nextScore,
-          highest_score_record: Math.max(nextScore, highScore),
-          total_moves_played: history.length + 1
-        });
-
-        playGameStateSound('gameover', soundEnabled, hapticEnabled);
-
-        if (username) {
-          await submitGlobalScore(username, nextScore, '4x4');
-        } else {
-          setShowNameModal(true);
-        }
-
-        if (!isAdsRemoved) {
-          const hasReadyInterstitial = typeof adContext?.isInterstitialReady === 'function'
-            ? adContext.isInterstitialReady()
-            : false;
-
-          if (typeof adContext?.showInterstitial === 'function' && hasReadyInterstitial) {
-            try {
-              adContext.showInterstitial();
-            } catch (e) {
-              setShowInterstitialMock(true);
-            }
-          } else {
-            setShowInterstitialMock(true);
-          }
-        }
-
-        setShowGameOverScreen(true);
       }
     }
   };
@@ -581,12 +604,6 @@ export default function GameScreen({ navigation }) {
         </View>
       </View>
 
-      <View style={styles.adWrapper}>
-        {!isAdsRemoved && showAd && (
-          <BannerAdMock onFailed={() => setShowAd(false)} navigation={navigation} />
-        )}
-      </View>
-
       <View style={styles.grid}>
         <View style={styles.backgroundGrid}>
           {Array(16).fill(null).map((_, i) => (
@@ -596,13 +613,13 @@ export default function GameScreen({ navigation }) {
         <View style={styles.tileContainer}>
           {(() => {
             const tiles = [];
+            // 1. Render primary tiles
             grid.forEach((row, r) => {
               row.forEach((cell, c) => {
                 if (cell !== null) tiles.push({ ...cell, r, c });
               });
             });
-
-            return tiles.map((tile) => (
+            const tileElements = tiles.map((tile) => (
               <AnimatedTileWrapper
                 key={tile.id}
                 r={tile.r}
@@ -615,25 +632,32 @@ export default function GameScreen({ navigation }) {
                   cellSize={CELL_SIZE} 
                   isNew={newTileCoord === `${tile.r}-${tile.c}`} 
                   isMerged={mergedCoords.includes(`${tile.r}-${tile.c}`)}
+                  slideDuration={TILE_SLIDE_DURATION}
                   r={tile.r}
                   c={tile.c}
                 />
               </AnimatedTileWrapper>
             ));
+
+            // 2. Render Ghost tiles (the contributors to a merge)
+            const ghostElements = mergingGhosts.map((ghost) => (
+              <AnimatedTileWrapper
+                key={`ghost-${ghost.id}`}
+                r={ghost.targetR}
+                c={ghost.targetC}
+                fromR={ghost.sourceR}
+                fromC={ghost.sourceC}
+                isDeleteMode={false}
+              >
+                {/* Ghost shows the original value (2) sliding to the target */}
+                <Tile value={ghost.value} cellSize={CELL_SIZE} isNew={false} isMerged={false} />
+              </AnimatedTileWrapper>
+            ));
+
+            return [...tileElements, ...ghostElements];
           })()}
         </View>
       </View>
-
-      {/* <View style={styles.adPromoWrapper}>
-        {!isAdsRemoved && (
-          <Button3D style={styles.adPromoBtn} onPress={() => navigation.navigate('Shop')}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.adTag}>Ad Mock</Text>
-              <Text style={styles.adPromoText}>Remove Ads + Daily Coins — $2.99</Text>
-            </View>
-          </Button3D>
-        )}
-      </View> */}
 
       <View style={styles.powerUpsWrapper}>
         <Text style={styles.powerUpsTitle}>POWER-UPS</Text>
@@ -689,6 +713,12 @@ export default function GameScreen({ navigation }) {
             <Text style={styles.powerUpBtnText}>⚙️ Settings</Text>
           </Button3D>
         </View>
+
+        {!isAdsRemoved && (
+          <Button3D style={styles.removeAdsBtn} onPress={() => navigation.navigate('Shop')}>
+            <Text style={styles.removeAdsBtnText}>Remove Ads — Open Shop</Text>
+          </Button3D>
+        )}
       </View>
 
       {showSettingsModal && (
@@ -833,22 +863,15 @@ export default function GameScreen({ navigation }) {
       <Confetti active={showConfetti} />
       <UsernameModal visible={showNameModal} onSave={handleNameSave} />
       <View style={styles.adWrapperBottom}>
-        {!isAdsRemoved && (
-          <>
-            <Button3D style={styles.removeAdsBtn} onPress={() => navigation.navigate('Shop')}>
-              <Text style={styles.removeAdsBtnText}>Remove Ads — Open Shop</Text>
-            </Button3D>
-            {showAd && <BannerAdMock onFailed={() => setShowAd(false)} />}
-          </>
-        )}
+        {!isAdsRemoved && showAd && <BannerAdMock onFailed={() => setShowAd(false)} />}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#faf8ef', alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
-  header: { flexDirection: 'row', width: width - 40, justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  container: { flex: 1, backgroundColor: '#faf8ef', alignItems: 'center', justifyContent: 'flex-start', paddingVertical: 10, paddingTop: 60 },
+  header: { flexDirection: 'row', width: width - 40, justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
   titleContainer: { alignItems: 'flex-start' },
   title: { fontSize: 36, fontWeight: 'bold', color: '#776e65', lineHeight: 38 },
   subtitle: { color: '#776e65', fontSize: 13, fontWeight: '500', opacity: 0.8 },
@@ -861,7 +884,6 @@ const styles = StyleSheet.create({
   coinLabelText: { color: '#ffffff', opacity: 0.95 },
   coinValueText: { color: '#ffffff', fontSize: 14, fontWeight: 'bold' },
 
-  adWrapper: { width: width, minHeight: 50, marginVertical: 12, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0 },
   adBanner: { flexDirection: 'row', backgroundColor: '#7c5bc4', width: width, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 6, alignItems: 'center', justifyContent: 'space-between' },
   adTag: { backgroundColor: 'rgba(255, 255, 255, 0.2)', color: '#fff', fontSize: 10, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 3, fontWeight: 'bold' },
   adBannerText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
@@ -924,7 +946,7 @@ const styles = StyleSheet.create({
   interstitialCloseBtnDisabled: { backgroundColor: '#bdc3c7' },
   interstitialCloseText: { color: '#ffffff', fontWeight: 'bold', fontSize: 16 },
 
-  adWrapperBottom: { width: width, paddingHorizontal: 0, paddingBottom: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  adWrapperBottom: { width: width, paddingHorizontal: 0, paddingBottom: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', marginTop: 'auto' },
   removeAdsBtn: { width: width - 40, backgroundColor: '#e1b024', paddingVertical: 10, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   removeAdsBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
 
@@ -947,5 +969,3 @@ const styles = StyleSheet.create({
   gameOverBtnRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 12 },
   gameOverBtn: { paddingVertical: 14, borderRadius: 6, width: '48.5%', alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 4 }
 });
-
-

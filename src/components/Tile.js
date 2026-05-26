@@ -1,19 +1,34 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
 
-export default function Tile({ value, cellSize, isNew, isMerged }) {
+export default function Tile({ value, cellSize, isNew, isMerged, slideDuration = 150 }) {
   // 1. Setup clean scale animation nodes
   const scaleValue = useRef(new Animated.Value(isNew ? 0 : 1)).current;
-  const pulseValue = useRef(new Animated.Value(1)).current;
+  const pulseValue = useRef(new Animated.Value(1)).current; // This will be used for merge animation
 
-  // Track previous grid values to calculate merge animation only
-  const previousValueRef = useRef(value);
+  // Internal state to delay the value change until the slide completes
+  const [displayValue, setDisplayValue] = useState(value);
+
+  // Persistent refs to track if animations for this specific state have already fired
+  const lastPulsedValue = useRef(null);
+  const hasSpawned = useRef(false);
 
   useEffect(() => {
     if (value !== 0) {
+      // --- VALUE TRANSITION LOGIC ---
+      // If merging, wait for the slide to finish before changing the number visually
+      if (isMerged && value !== displayValue) {
+        setTimeout(() => {
+          setDisplayValue(value);
+        }, slideDuration);
+      } else {
+        setDisplayValue(value);
+      }
+
       // --- SPAWNING ANIMATION ---
-      if (isNew) {
+      if (isNew && !hasSpawned.current) {
         scaleValue.setValue(0);
+        hasSpawned.current = true;
         Animated.timing(scaleValue, {
           toValue: 1,
           duration: 120,
@@ -22,20 +37,21 @@ export default function Tile({ value, cellSize, isNew, isMerged }) {
       }
 
       // --- MERGING ANIMATION ---
-      const valueIncreased = previousValueRef.current !== 0 && value > previousValueRef.current;
-      if (isMerged || valueIncreased) {
-        pulseValue.setValue(1.25);
-        Animated.timing(pulseValue, {
-          toValue: 1.00,
-          duration: 140,
-          useNativeDriver: true,
-        }).start();
+      // Only pulse if isMerged is true AND we haven't pulsed for this specific value increase yet
+      if (isMerged && value > (lastPulsedValue.current || 0)) {
+        lastPulsedValue.current = value;
+        // Delay the pulse until the tile has actually "arrived" and value has flipped
+        setTimeout(() => {
+          pulseValue.setValue(1.25);
+          Animated.timing(pulseValue, {
+            toValue: 1.00,
+            duration: 140,
+            useNativeDriver: true,
+          }).start();
+        }, slideDuration);
       }
     }
-    
-    // Save the current value so the next render can detect merges only
-    previousValueRef.current = value;
-  }, [value, isNew, isMerged]);
+  }, [value, isNew, isMerged, slideDuration]);
 
   const getTileStyle = (val) => {
     const colors = {
@@ -67,8 +83,8 @@ export default function Tile({ value, cellSize, isNew, isMerged }) {
 
   if (value === 0 || value === null) return null;
 
-  const tileStyle = getTileStyle(value);
-  const textStyle = getTextStyle(value);
+  const tileStyle = getTileStyle(displayValue);
+  const textStyle = getTextStyle(displayValue);
 
   const combinedTransform = [
     { scale: scaleValue },
@@ -78,7 +94,7 @@ export default function Tile({ value, cellSize, isNew, isMerged }) {
   return (
     <Animated.View style={[styles.tile, tileStyle, { transform: combinedTransform }]}>
       <Text style={[styles.text, textStyle]}>
-        {value}
+        {displayValue}
       </Text>
     </Animated.View>
   );
