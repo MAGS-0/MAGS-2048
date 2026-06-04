@@ -1,12 +1,16 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, Animated, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getUsername, getUserAvatar, getCoins, saveCoins } from '../utils/storage';
+import { getUsername, saveUsername, getUserAvatar, saveUserAvatar, getCoins, saveCoins, getUserId, clearStorage } from '../utils/storage';
 import UsernameModal from '../components/UsernameModal';
 import Button3D from '../components/Button3D';
 import { useAds } from '../context/AdContext';
-import { BannerAdMock } from '../utils/admobMock';
-import { fetchRemoteBaseCoins } from '../utils/firebase';
+import { 
+  fetchRemoteBaseCoins, 
+  updateLeaderboardAvatar, 
+  clearLeaderboard, 
+  seedLeaderboardWithRandomPlayers 
+} from '../utils/firebase';
 import { playCoinRewardSound } from '../utils/audioController';
 
 const { width, height } = Dimensions.get('window');
@@ -31,8 +35,9 @@ const AVATAR_SOURCES = {
 
 export default function HomeScreen({ navigation }) {
   // Destructure adsRemoved instead of missing parameters to match AdContext
-  const { showInterstitial, setAdsRemovedStatus, adsRemoved } = useAds();
+  const { showStartInterstitial, setAdsRemovedStatus, adsRemoved, showRewardedAd } = useAds();
   const [currentUser, setCurrentUser] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [currentAvatar, setCurrentAvatar] = useState('avatar_1');
   const [showProfileModal, setShowProfileModal] = useState(false);
   
@@ -47,8 +52,6 @@ export default function HomeScreen({ navigation }) {
   const [currentStreak, setCurrentStreak] = useState(1);
   const [baseCoinAmount, setBaseCoinAmount] = useState(1);
   const [countdownText, setCountdownText] = useState('');
-  const [showRewardAdModal, setShowRewardAdModal] = useState(false);
-  const [adCountdown, setAdCountdown] = useState(5);
   
   // --- NATIVE ANIMATION INTERPOLATION CHANNELS ---
   const coinFlyAnimY = useRef(new Animated.Value(0)).current;
@@ -57,13 +60,15 @@ export default function HomeScreen({ navigation }) {
   const walletScaleAnim = useRef(new Animated.Value(1)).current;
 
   const countdownTimerRef = useRef(null);
-  const adTimerRef = useRef(null);
   const [showAd, setShowAd] = useState(true);
 
   useEffect(() => {
     const initializeDashboard = async () => {
       const name = await getUsername();
       setCurrentUser(name);
+
+      const uid = await getUserId();
+      setCurrentUserId(uid);
 
       const avatarId = await getUserAvatar();
       setCurrentAvatar(avatarId);
@@ -87,7 +92,6 @@ export default function HomeScreen({ navigation }) {
     return () => {
       unsubscribe();
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-      if (adTimerRef.current) clearInterval(adTimerRef.current);
     };
   }, [navigation, adsRemoved]);
 
@@ -142,9 +146,16 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  const handleProfileSave = (name, avatarId) => {
-    if (name) setCurrentUser(name);
-    if (avatarId) setCurrentAvatar(avatarId);
+  const handleProfileSave = async (name, avatarId) => {
+    if (name) {
+      setCurrentUser(name);
+      await saveUsername(name);
+    }
+    if (avatarId) {
+      setCurrentAvatar(avatarId);
+      await saveUserAvatar(avatarId);
+      await updateLeaderboardAvatar(currentUserId, avatarId);
+    }
     setShowProfileModal(false);
   };
 
@@ -248,30 +259,73 @@ export default function HomeScreen({ navigation }) {
   };
 
   const launchRewardedAdDoubleFlow = () => {
-    setAdCountdown(5);
-    setShowRewardAdModal(true);
-
-    adTimerRef.current = setInterval(() => {
-      setAdCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(adTimerRef.current);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  const claimDoubleAdReward = async () => {
-    if (adCountdown > 0) return;
-    clearInterval(adTimerRef.current);
-    setShowRewardAdModal(false);
-    await commitRewardToWallet(true); 
+    const success = showRewardedAd(async () => {
+      await commitRewardToWallet(true);
+    });
+    if (!success) {
+      Alert.alert("Ad not ready", "The reward video is still loading. Please try again in a moment.");
+    }
   };
 
   const handlePlayPress = () => {
-    showInterstitial();
+    showStartInterstitial();
     navigation.navigate('Game');
+  };
+
+  const handleDevTools = () => {
+    Alert.alert(
+      "🛠 Developer Tools",
+      "Warning: These actions affect the global production database.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Wipe Leaderboard", 
+          style: "destructive", 
+          onPress: async () => {
+            await clearLeaderboard();
+            Alert.alert("Success", "The leaderboard has been cleared.");
+          }
+        },
+        { 
+          text: "Seed Random Data", 
+          onPress: async () => {
+            await seedLeaderboardWithRandomPlayers();
+            Alert.alert("Success", "Leaderboard reset and seeded with 15 players.");
+          }
+        }
+      ],
+      { cancelable: true }
+    );
+
+    // Secondary developer options
+    Alert.alert(
+      "🛠 Local Data Tools",
+      "Options for fresh-player testing.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Wipe Local Data (Fresh Player)", 
+          style: "destructive", 
+          onPress: resetLocalData 
+        }
+      ]
+    );
+  };
+
+  const resetLocalData = async () => {
+    await clearStorage();
+    setCurrentUser(null);
+    setCurrentAvatar('avatar_1');
+    setWalletCoins(0);
+    setIsPremiumUser(false);
+    setAdsRemovedStatus(false);
+    setIsRewardClaimed(false);
+    setCurrentStreak(1);
+    setCountdownText('');
+    // Regenerate a new user ID immediately for the "fresh" session
+    const newId = await getUserId();
+    setCurrentUserId(newId);
+    Alert.alert("Success", "All local data wiped. You are now testing as a fresh player.");
   };
 
   const immediateClaimValue = calculateRewardPayout(currentStreak);
@@ -282,7 +336,13 @@ export default function HomeScreen({ navigation }) {
       
       <View style={styles.topHeaderControlBar}>
         <View style={styles.brandingNode}>
-          <Text style={styles.headerTitleBrand}>MAGS 2048</Text>
+          <TouchableOpacity 
+            // onLongPress={handleDevTools} 
+            // delayLongPress={1500} 
+            activeOpacity={0.8}
+          >
+            <Text style={styles.headerTitleBrand}>MAGS 2048</Text>
+          </TouchableOpacity>
           <View style={styles.profileHeaderRow}>
             <TouchableOpacity style={styles.profileAvatarWrapper} onPress={() => setShowProfileModal(true)} activeOpacity={0.8}>
               <Image
@@ -394,13 +454,13 @@ export default function HomeScreen({ navigation }) {
         </Button3D>
 
         {/* Condition evaluates cleanly using direct context flag to hide button */}
-        {!isPremiumUser && !adsRemoved && (
+        {/* {!isPremiumUser && !adsRemoved && (
           <Button3D style={[styles.primaryMenuBtn, styles.secondaryMenuBtn, { backgroundColor: '#edc22e' }]}
           edgeColor="#c09403"
           onPress={() => navigation.navigate('Shop')}>
             <Text style={styles.secondaryMenuBtnText}>👑 Coin Store & Upgrades</Text>
           </Button3D>
-        )}
+        )} */}
       </View>
 
       <UsernameModal
@@ -410,33 +470,6 @@ export default function HomeScreen({ navigation }) {
         initialAvatar={currentAvatar}
       />
 
-      {showRewardAdModal && (
-        <View style={styles.adOverlayContainer}>
-          <View style={styles.adVideoBoxCard}>
-            <Text style={styles.adVideoBadge}>SPONSOR AD MULTIPLIER</Text>
-            <View style={styles.videoContentBox}>
-              <Text style={styles.videoPlayerEmoji}>🎬</Text>
-              <Text style={styles.videoMainTitle}>MAGS Ad Engine Stream</Text>
-              <Text style={styles.videoSubTitle}>Watch this promo to unlock 2x reward coins!</Text>
-            </View>
-            <TouchableOpacity 
-              style={[styles.claimAdBtn, adCountdown > 0 && styles.claimAdBtnDisabled]}
-              onPress={claimDoubleAdReward}
-              disabled={adCountdown > 0}
-            >
-              <Text style={styles.claimAdText}>
-                {adCountdown > 0 ? `⏳ Multiplier unlocks in ${adCountdown}s...` : '🎁 DOUBLE MY COINS NOW'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      <View style={styles.adWrapper}>
-        {!isPremiumUser && !adsRemoved && showAd && (
-          <BannerAdMock onFailed={() => setShowAd(false)} />
-        )}
-      </View>
     </View>
   );
 }

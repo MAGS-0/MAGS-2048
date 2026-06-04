@@ -4,19 +4,37 @@ import {
   View, 
   Text, 
   FlatList, 
-  TouchableOpacity, 
+  TouchableOpacity,
+  Image,
   ActivityIndicator,
   Dimensions
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
-import Button3D from '../components/Button3D';
 import { useAds } from '../context/AdContext';
-import { BannerAdMock } from '../utils/admobMock';
 import { fetchLeaderboard, fetchUserRank } from '../utils/firebase';
-import { getUsername } from '../utils/storage';
+import { getUsername, getUserId } from '../utils/storage';
+import Button3D from '../components/Button3D';
 import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
+
+const AVATAR_SOURCES = {
+  avatar_1: require('../assets/avatar1.png'),
+  avatar_2: require('../assets/avatar2.png'),
+  avatar_3: require('../assets/avatar3.png'),
+  avatar_4: require('../assets/avatar4.png'),
+  avatar_5: require('../assets/avatar5.png'),
+  avatar_6: require('../assets/avatar6.png'),
+  avatar_7: require('../assets/avatar7.png'),
+  avatar_8: require('../assets/avatar8.png'),
+  avatar_9: require('../assets/avatar9.png'),
+  avatar_10: require('../assets/avatar10.png'),
+  avatar_11: require('../assets/avatar11.png'),
+  avatar_12: require('../assets/avatar12.png'),
+  avatar_13: require('../assets/avatar13.png'),
+  avatar_14: require('../assets/avatar14.png'),
+  avatar_15: require('../assets/avatar15.png'),
+};
 
 export default function LeaderboardScreen({ navigation }) {
   const { adsRemoved } = useAds();
@@ -25,6 +43,7 @@ export default function LeaderboardScreen({ navigation }) {
   const [leaderboard, setLeaderboard] = useState([]);
   const [userRank, setUserRank] = useState(null);
   const [currentUsername, setCurrentUsername] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -34,27 +53,19 @@ export default function LeaderboardScreen({ navigation }) {
     try {
       setLoading(true);
       
-      // 1. Get and Log Local Name
       const rawName = await getUsername();
-      // const rawName = "Sum";
       const cleanName = rawName ? rawName.trim() : null;
       setCurrentUsername(cleanName);
-      
-      console.log("DEBUG: Local Username found is:", `"${cleanName}"`);
 
-      // 2. Fetch Leaderboard
+      const uid = await getUserId();
+      setCurrentUserId(uid);
+      
       const data = await fetchLeaderboard('4x4');
       setLeaderboard(data || []);
       
-      if (data && data.length > 0) {
-        console.log("DEBUG: First name in DB is:", `"${data[0].username}"`);
-      }
-
-      // 3. Fetch specific user rank
-      if (cleanName) {
-        const rankData = await fetchUserRank(cleanName, '4x4');
+      if (uid) {
+        const rankData = await fetchUserRank(uid, '4x4');
         setUserRank(rankData);
-        console.log("DEBUG: User Rank Data:", rankData);
       }
     } catch (error) {
       console.error("Leaderboard Load Error:", error);
@@ -63,20 +74,24 @@ export default function LeaderboardScreen({ navigation }) {
     }
   };
 
-  // Helper to check if two names match regardless of case or spaces
-  const isMatch = (dbName) => {
-    if (!currentUsername || !dbName) return false;
-    return dbName.trim().toLowerCase() === currentUsername.toLowerCase();
+  // Check if item belongs to current user based on unique ID
+  const isMatch = (item) => {
+    if (!currentUserId || !item.userId) return false;
+    return item.userId === currentUserId;
   };
 
   const renderPodiumItem = (item, rank) => {
     if (!item) return <View style={styles.podiumColumn} />;
-    const me = isMatch(item.username);
+    const me = isMatch(item);
     
     return (
       <View style={[styles.podiumColumn, rank === 1 ? styles.firstPlace : {}]}>
         <View style={[styles.avatarContainer, me && styles.myAvatar]}>
-           <Text style={styles.podiumEmoji}>{rank === 1 ? '🥇' : rank === 2 ? '🥈' : '🥉'}</Text>
+          <Image 
+            source={AVATAR_SOURCES[item.avatarId] || AVATAR_SOURCES.avatar_1} 
+            style={styles.podiumAvatarImage} 
+          />
+          <View style={styles.rankBadge}><Text style={styles.rankBadgeText}>{rank}</Text></View>
         </View>
         <Text style={[styles.podiumName, me && styles.myNameText]} numberOfLines={1}>
           {item.username} {me ? "(You)" : ""}
@@ -93,7 +108,7 @@ export default function LeaderboardScreen({ navigation }) {
 
   const renderItem = ({ item, index }) => {
     if (index < 3) return null;
-    const me = isMatch(item.username);
+    const me = isMatch(item);
     const rank = index + 1;
 
     return (
@@ -101,6 +116,10 @@ export default function LeaderboardScreen({ navigation }) {
         <View style={styles.rankContainer}>
           <Text style={styles.rankText}>{rank}</Text>
         </View>
+        <Image 
+          source={AVATAR_SOURCES[item.avatarId] || AVATAR_SOURCES.avatar_1} 
+          style={styles.rowAvatar} 
+        />
         <Text style={[styles.nameText, me && styles.myNameText]} numberOfLines={1}>
           {item.username} {me ? "(You)" : ""}
         </Text>
@@ -154,11 +173,6 @@ export default function LeaderboardScreen({ navigation }) {
                 </View>
               </View>
             )}
-            <View style={styles.adWrapper}>
-              {!adsRemoved && showAd && (
-                <BannerAdMock onFailed={() => setShowAd(false)} />
-              )}
-            </View>
           </View>
         )}
       </SafeAreaView>
@@ -176,9 +190,11 @@ const styles = StyleSheet.create({
   podiumContainer: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', marginVertical: 20, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#eee4da' },
   podiumColumn: { alignItems: 'center', width: width * 0.28 },
   firstPlace: { transform: [{ translateY: -15 }] },
-  avatarContainer: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#eee4da', justifyContent: 'center', alignItems: 'center', marginBottom: 5, borderWidth: 2, borderColor: '#bbada0' },
+  avatarContainer: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#eee4da', justifyContent: 'center', alignItems: 'center', marginBottom: 5, borderWidth: 2, borderColor: '#bbada0', overflow: 'hidden' },
   myAvatar: { borderColor: '#8f7a66', borderWidth: 3 },
-  podiumEmoji: { fontSize: 30 },
+  podiumAvatarImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  rankBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#8f7a66', width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  rankBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
   podiumName: { fontSize: 13, fontWeight: 'bold', color: '#776e65', marginBottom: 5 },
   podiumScoreBadge: { backgroundColor: '#8f7a66', paddingHorizontal: 10, paddingVertical: 2, borderRadius: 12, marginBottom: 10 },
   podiumScoreText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
@@ -187,6 +203,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#eee4da', padding: 15, borderRadius: 10, marginBottom: 10 },
   myRow: { backgroundColor: '#ede0c8', borderWidth: 2, borderColor: '#8f7a66' },
   rankContainer: { width: 45 },
+  rowAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 12, backgroundColor: '#bbada0' },
   rankText: { fontSize: 16, fontWeight: 'bold', color: '#776e65' },
   rankTextWhite: { fontSize: 16, fontWeight: 'bold', color: '#fff' },
   nameText: { flex: 1, fontSize: 16, color: '#776e65', fontWeight: '600' },

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "MAGS 2048",
+    "name": "MAGS-2048",
     "slug": "mags-2048",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,20 +9,37 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#faf8ef"
+      "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mags2048.android"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#faf8ef"
+        "backgroundColor": "#ffffff"
       },
-      "package": "com.mags2048.android"
+      "package": "com.mags2048.android",
+      "googleServicesFile": "./google-services.json"
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
+    "plugins": [
+      "expo-dev-client",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-2731691947572564~9661697789",
+          "iosAppId": "ca-app-pub-2731691947572564~9661697789"
+        }
+      ],
+      "@react-native-firebase/app",
+      "react-native-iap",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "280d8137-2895-45a1-a0ee-2d1298f78502"
+      }
     }
   }
 }

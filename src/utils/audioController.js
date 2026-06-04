@@ -1,4 +1,5 @@
 import { Audio } from 'expo-av';
+import { Asset } from 'expo-asset';
 import * as Haptics from 'expo-haptics';
 
 // Cache container to hold preloaded Sound objects in memory
@@ -36,19 +37,25 @@ export const preloadGameAudio = async () => {
       playThroughEarpieceAndroid: false,
     });
 
-    // Load Tile sounds safely
+    // Load Tile sounds safely by ensuring they are downloaded before being passed to Audio
     for (const [key, source] of Object.entries(TILE_SOUNDS)) {
       if (!soundObjects[`tile_${key}`]) {
-        const { sound } = await Audio.Sound.createAsync(source, { shouldPlay: false });
+        const asset = Asset.fromModule(source);
+        await asset.downloadAsync(); // Ensure file is locally available
+        
+        const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: false });
         soundObjects[`tile_${key}`] = sound;
         activeStatus[`tile_${key}`] = false;
       }
     }
 
-    // Load UI sounds safely
+    // Load UI sounds safely by ensuring they are downloaded before being passed to Audio
     for (const [key, source] of Object.entries(UI_SOUNDS)) {
       if (!soundObjects[key]) {
-        const { sound } = await Audio.Sound.createAsync(source, { shouldPlay: false });
+        const asset = Asset.fromModule(source);
+        await asset.downloadAsync(); // Ensure file is locally available
+        
+        const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: false });
         soundObjects[key] = sound;
         activeStatus[key] = false;
       }
@@ -110,7 +117,7 @@ const executeFeedback = async (soundKey, hapticStyle, soundOn, hapticOn) => {
 export const playSwipeSound = (direction, soundOn, hapticOn) => {
   const isVertical = direction === 'up' || direction === 'down';
   executeFeedback(
-    null,
+    isVertical ? 'swipe_v' : 'swipe_h',
     'heavy', 
     soundOn,
     hapticOn
@@ -120,7 +127,8 @@ export const playSwipeSound = (direction, soundOn, hapticOn) => {
 export const playMergeSound = (highestTileValue, soundOn, hapticOn) => {
   // If the tile is less than 512, safely fall back to a generic swipe sound to stay quiet
   if (highestTileValue < 512) {
-    executeFeedback(null, 'medium', soundOn, hapticOn);
+    // Use horizontal swipe as a default subtle feedback for early merges
+    executeFeedback('swipe_h', 'medium', soundOn, hapticOn);
     return;
   }
 

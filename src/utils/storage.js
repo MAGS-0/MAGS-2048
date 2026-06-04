@@ -130,6 +130,7 @@ const GAME_STATE_KEY = '@mags_2048_game_state';
 const HIGH_SCORE_KEY = '@mags_2048_high_score';
 const USERNAME_KEY = '@mags_2048_username';
 const USER_AVATAR_KEY = '@mags_2048_user_avatar';
+const USER_ID_KEY = '@mags_2048_user_id';
 
 export const saveGameState = async (grid, score) => {
   try {
@@ -168,6 +169,22 @@ export const getHighScore = async () => {
   }
 };
 
+/**
+ * Generates or retrieves a unique persistent ID for this installation.
+ */
+export const getUserId = async () => {
+  try {
+    let id = await AsyncStorage.getItem(USER_ID_KEY);
+    if (!id) {
+      id = `u_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+      await AsyncStorage.setItem(USER_ID_KEY, id);
+    }
+    return id;
+  } catch (e) {
+    return 'temp_user';
+  }
+};
+
 export const saveUsername = async (name) => {
   try {
     if (name) {
@@ -200,7 +217,7 @@ export const saveUserAvatar = async (avatarId) => {
   }
 };
 
-const AVATAR_IDS = Array.from({ length: 15 }, (_, i) => `avatar_${i + 1}`);
+export const AVATAR_IDS = Array.from({ length: 15 }, (_, i) => `avatar_${i + 1}`);
 
 export const getUserAvatar = async () => {
   try {

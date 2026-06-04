@@ -1,22 +1,73 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Button3D from '../components/Button3D';
 import { useAds } from '../context/AdContext';
-import { BannerAdMock } from '../utils/admobMock';
 import { getCoins, saveCoins } from '../utils/storage';
 import { logGameEvent } from '../utils/analytics';
+// import { useIAP } from 'react-native-iap';
 
 const { width } = Dimensions.get('window');
+const PRODUCT_ID = 'com.mags2048.remove_ads_daily_coins';
 
 export default function ShopScreen({ navigation }) {
-  // CRITICAL FIX: Changed from isAdsRemoved to align exactly with your context state tracking property
   const { adsRemoved, setAdsRemovedStatus } = useAds();
   const [isPurchasing, setIsPurchasing] = useState(false);
-  const [showAd, setShowAd] = useState(true);
+
+  // const {
+  //   connected,
+  //   products,
+  //   getProducts,
+  //   requestPurchase,
+  //   currentPurchase,
+  //   finishTransaction: iapFinishTransaction,
+  // } = useIAP();
+
+  // Load product details from the store on mount
+  // useEffect(() => {
+  //   if (connected) {
+  //     getProducts({ skus: [PRODUCT_ID] });
+  //   }
+  // }, [connected]);
+
+  // Listen for successful transactions
+  // useEffect(() => {
+  //   const checkCurrentPurchase = async () => {
+  //     // Process if we have a purchase and it hasn't been applied to the account yet.
+  //     // Removed "isPurchasing" from the condition to allow recovery from app crashes during checkout.
+  //     if (currentPurchase && !adsRemoved) {
+  //       try {
+  //         // Finalize the transaction in the store
+  //         await iapFinishTransaction({ purchase: currentPurchase });
+  //         setIsPurchasing(false); // Ensure purchasing state is reset
+  //         await handleSuccess();
+  //       } catch (error) {
+  //         console.error('Error finishing transaction', error);
+  //         setIsPurchasing(false);
+  //       }
+  //     }
+  //   };
+  //   checkCurrentPurchase();
+  // }, [currentPurchase, adsRemoved, iapFinishTransaction, handleSuccess]); // Added iapFinishTransaction and handleSuccess to dependencies
+
+  const handleSuccess = async () => {
+    await setAdsRemovedStatus(true);
+    const currentCoins = await getCoins() || 0;
+    const newCoinBalance = currentCoins + 10;
+    await saveCoins(newCoinBalance);
+
+    logGameEvent('iap_success', { product_id: PRODUCT_ID, new_balance: newCoinBalance });
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    setIsPurchasing(false);
+
+    Alert.alert(
+      "🎉 Purchase Successful!",
+      "Ads removed permanently and +10 Coins added to your wallet.",
+      [{ text: "Awesome!", onPress: () => navigation.goBack() }]
+    );
+  };
 
   const handlePurchase = async () => {
     if (adsRemoved) {
@@ -25,33 +76,17 @@ export default function ShopScreen({ navigation }) {
     }
 
     setIsPurchasing(true);
-    logGameEvent('iap_initiated', { product_id: 'com.mags2048.remove_ads_daily_coins' });
-
-    setTimeout(async () => {
-      try {
-        // Persist the state globally inside the global state tree context 
-        // and unified storage via the context method
-        await setAdsRemovedStatus(true);
-
-        const currentCoins = await getCoins() || 0;
-        const newCoinBalance = currentCoins + 10;
-        await saveCoins(newCoinBalance);
-
-        logGameEvent('iap_success', { product_id: 'com.mags2048.remove_ads_daily_coins', new_balance: newCoinBalance });
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-
-        setIsPurchasing(false);
-
-        Alert.alert(
-          "🎉 Purchase Successful!",
-          "Thank you! Ads are now permanently removed, and +10 Coins have been safely deposited into your game wallet.",
-          [{ text: "Awesome!", onPress: () => navigation.goBack() }]
-        );
-      } catch (error) {
-        setIsPurchasing(false);
-        Alert.alert("Transaction Failed", "Could not process mock payment. Please try again.");
-      }
-    }, 1500);
+    logGameEvent('iap_initiated', { product_id: PRODUCT_ID });
+    
+    // Mocking the purchase delay for testing while native IAP is commented out
+    try {
+      // await requestPurchase({ sku: PRODUCT_ID });
+      setTimeout(() => handleSuccess(), 1000);
+    } catch (error) {
+      setIsPurchasing(false);
+      // console.warn(error.code, error.message);
+      Alert.alert("Transaction Failed", "The purchase could not be completed.");
+    }
   };
 
   return (
@@ -114,11 +149,6 @@ export default function ShopScreen({ navigation }) {
           <Text style={styles.footerLegal}>
             Purchases simulate real app store endpoints safely within this build phase.
           </Text>
-        </View>
-        <View style={styles.adWrapper}>
-          {!adsRemoved && showAd && (
-            <BannerAdMock onFailed={() => setShowAd(false)} />
-          )}
         </View>
       </SafeAreaView>
     </SafeAreaProvider>

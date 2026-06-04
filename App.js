@@ -6,10 +6,11 @@ import GameScreen from './src/screens/GameScreen';
 import LeaderboardScreen from './src/screens/LeaderboardScreen';
 import ShopScreen from './src/screens/ShopScreen'; 
 import { AdProvider } from './src/context/AdContext';
+// import { withIAPContext } from 'react-native-iap';
 
 const Stack = createStackNavigator();
 
-export default function App() {
+function App() {
   return (
     <AdProvider>
       <NavigationContainer>
@@ -31,3 +32,5 @@ export default function App() {
     </AdProvider>
   );
 }
+
+export default App;

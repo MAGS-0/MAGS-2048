@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "241369797969",
+    "firebase_url": "https://mags-2048-default-rtdb.firebaseio.com",
+    "project_id": "mags-2048",
+    "storage_bucket": "mags-2048.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:241369797969:android:73769c6497a3f77ef3af70",
+        "android_client_info": {
+          "package_name": "com.mags2048.android"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCAqJz_PuowqC7Dw1crByf2GkcvrjQy-_U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
