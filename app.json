@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "MAGS-2048",
+    "name": "Go! 2048",
     "slug": "mags-2048",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,12 +16,13 @@
       "bundleIdentifier": "com.mags2048.android"
     },
     "android": {
+      "package": "com.mags2048.android",
+      "versionCode": 8,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      },
-      "package": "com.mags2048.android",
-      "googleServicesFile": "./google-services.json"
+      }
     },
     "plugins": [
       "expo-dev-client",
@@ -40,6 +41,56 @@
       "eas": {
         "projectId": "280d8137-2895-45a1-a0ee-2d1298f78502"
       }
-    }
+    },
+    "owner": "indiegames"
   }
 }
+
+
+// {
+//   "expo": {
+//     "name": "MAGS-2048",
+//     "slug": "mags-2048",
+//     "version": "1.0.0",
+//     "orientation": "portrait",
+//     "icon": "./assets/icon.png",
+//     "userInterfaceStyle": "light",
+//     "splash": {
+//       "image": "./assets/splash.png",
+//       "resizeMode": "contain",
+//       "backgroundColor": "#ffffff"
+//     },
+//     "ios": {
+//       "supportsTablet": true,
+//       "bundleIdentifier": "com.mags2048.android"
+//     },
+//     "android": {
+//       "adaptiveIcon": {
+//         "foregroundImage": "./assets/adaptive-icon.png",
+//         "backgroundColor": "#ffffff"
+//       },
+//       "package": "com.mags2048.android",
+//       "googleServicesFile": "./google-services.json",
+//       "versionCode": 1
+//     },
+//     "plugins": [
+//       "expo-dev-client",
+//       [
+//         "react-native-google-mobile-ads",
+//         {
+//           "androidAppId": "ca-app-pub-2731691947572564~9661697789",
+//           "iosAppId": "ca-app-pub-2731691947572564~9661697789"
+//         }
+//       ],
+//       "@react-native-firebase/app",
+//       "react-native-iap",
+//       "expo-font"
+//     ],
+//     "extra": {
+//       "eas": {
+//         "projectId": "280d8137-2895-45a1-a0ee-2d1298f78502"
+//       }
+//     },
+//     "owner": "indiegames"
+//   }
+// }

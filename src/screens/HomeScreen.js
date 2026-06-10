@@ -341,7 +341,7 @@ export default function HomeScreen({ navigation }) {
             // delayLongPress={1500} 
             activeOpacity={0.8}
           >
-            <Text style={styles.headerTitleBrand}>MAGS 2048</Text>
+            <Text style={styles.headerTitleBrand}>Go! 2048</Text>
           </TouchableOpacity>
           <View style={styles.profileHeaderRow}>
             <TouchableOpacity style={styles.profileAvatarWrapper} onPress={() => setShowProfileModal(true)} activeOpacity={0.8}>

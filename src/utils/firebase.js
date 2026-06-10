@@ -15,13 +15,30 @@ import {
   updateDoc,
   getCountFromServer
 } from 'firebase/firestore';
+import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getDatabase, ref, get } from 'firebase/database';
 import { AVATAR_IDS } from './storage';
+
+// Helper to ensure user is authenticated before DB operations
+export const getAuthenticatedUser = async () => {
+  const auth = getAuth();
+  if (!auth.currentUser) {
+    await signInAnonymously(auth);
+  }
+  return auth.currentUser;
+};
 
 // 1. Submit a score to the global leaderboard (Creates a new unique entry for every game result)
 export const submitGlobalScore = async (userId, username, score, avatarId, gridType = '4x4') => {
-  if (!userId) return;
   try {
-    const docRef = doc(db, 'leaderboards', userId);
+    // Ensure we have a valid Auth session to satisfy Security Rules
+    const user = await getAuthenticatedUser();
+    
+    // Use the Auth UID as the document key to match the security rules
+    // Note: We prioritize the Firebase UID over the local storage userId for security
+    const authenticatedUserId = user.uid;
+    
+    const docRef = doc(db, 'leaderboards', authenticatedUserId);
     const docSnap = await getDoc(docRef);
     
     const numericScore = parseInt(score);
@@ -36,7 +53,7 @@ export const submitGlobalScore = async (userId, username, score, avatarId, gridT
     }
 
     await setDoc(docRef, {
-      userId,
+      userId: authenticatedUserId,
       username: username || 'Anonymous',
       score: numericScore,
       avatarId: avatarId || 'avatar_1',
@@ -69,7 +86,10 @@ export const fetchLeaderboard = async (gridType = '4x4') => {
 // 3. Fetch the rank of a specific user
 export const fetchUserRank = async (userId, gridType = '4x4') => {
   try {
-    const docRef = doc(db, 'leaderboards', userId);
+    const user = await getAuthenticatedUser();
+    const authenticatedUserId = user.uid;
+
+    const docRef = doc(db, 'leaderboards', authenticatedUserId);
     const userSnap = await getDoc(docRef);
 
     if (!userSnap.exists()) return null;
@@ -91,11 +111,10 @@ export const fetchUserRank = async (userId, gridType = '4x4') => {
     return null;
   }
 };
-// Add this to the very bottom of your src/utils/firebase.js file
-import { getDatabase, ref, get } from 'firebase/database';
-
 export const fetchRemoteBaseCoins = async () => {
   try {
+    // Ensure user is authenticated to avoid potential permission issues on some Firebase configs
+    await getAuthenticatedUser();
     const database = getDatabase();
     // Looks for a simple 'config/daily_base_coin' entry in your Realtime Database
     const dbRef = ref(database, 'config/daily_base_coin');
@@ -151,10 +170,13 @@ export const seedLeaderboardWithRandomPlayers = async () => {
 };
 
 // Function to update the avatar for all historical entries of a specific username
-export const updateLeaderboardAvatar = async (userId, avatarId) => {
-  if (!userId || !avatarId) return;
+export const updateLeaderboardAvatar = async (unused_userId, avatarId) => {
+  if (!avatarId) return;
   try {
-    const docRef = doc(db, 'leaderboards', userId);
+    const user = await getAuthenticatedUser();
+    const authenticatedUserId = user.uid;
+
+    const docRef = doc(db, 'leaderboards', authenticatedUserId);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
       await updateDoc(docRef, { avatarId });

@@ -71,7 +71,7 @@ export default function ShopScreen({ navigation }) {
 
   const handlePurchase = async () => {
     if (adsRemoved) {
-      Alert.alert("Already Active", "You already own the Premium Bundle! Thank you for supporting MAGS 2048.");
+      Alert.alert("Already Active", "You already own the Premium Bundle! Thank you for supporting Go! 2048.");
       return;
     }
 
@@ -109,7 +109,7 @@ export default function ShopScreen({ navigation }) {
             </View>
             
             <Text style={styles.productEmoji}>👑</Text>
-            <Text style={styles.productTitle}>MAGS Premium Bundle</Text>
+            <Text style={styles.productTitle}>Go! Premium Bundle</Text>
             <Text style={styles.productPrice}>{adsRemoved ? "Purchased" : "$2.99 Lifetime"}</Text>
 
             <View style={styles.featuresList}>

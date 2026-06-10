@@ -550,8 +550,8 @@ export default function GameScreen({ navigation }) {
     <View style={styles.container} {...panResponder.panHandlers}>
       <View style={styles.header}>
         <View style={styles.titleContainer}>
-          <Text style={styles.title}>2048</Text>
-          <Text style={styles.subtitle}>Join tiles to win!</Text>
+          <Text style={styles.title}>Go! 2048</Text>
+          <Text style={styles.subtitle}>Slide & Merge to win!</Text>
         </View>
         <View style={styles.scoreBoard}>
           <Animated.View style={[styles.scoreContainer, { transform: [{ scale: scoreBounce }] }]}>
@@ -575,7 +575,7 @@ export default function GameScreen({ navigation }) {
               );
             }}
           >
-            <Text style={[styles.scoreLabel, styles.coinLabelText]}>GET 🪙</Text>
+            <Text style={[styles.scoreLabel, styles.coinLabelText]}>GET FREE 🪙</Text>
             <Text style={styles.coinValueText}>🪙 {coins}</Text>
           </Button3D>
         </View>
@@ -724,7 +724,7 @@ export default function GameScreen({ navigation }) {
               <Text style={styles.menuItemText}>👑 Open Game Shop</Text>
             </Button3D>
 
-            <Button3D style={styles.menuItemBtn} onPress={() => Alert.alert("How to Play", "Slide matching number blocks into each other to add them up to reach the 2048 tile! This earns you +1 coins in reward!")}>
+            <Button3D style={styles.menuItemBtn} onPress={() => Alert.alert("How to Play - Go! 2048", "Slide matching number blocks into each other to add them up to reach the 2048 tile! This earns you +1 coins in reward!")}>
               <Text style={styles.menuItemText}>📖 How to Play Tutorial</Text>
             </Button3D>
 

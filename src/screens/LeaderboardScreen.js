@@ -11,8 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAds } from '../context/AdContext';
-import { fetchLeaderboard, fetchUserRank } from '../utils/firebase';
-import { getUsername, getUserId } from '../utils/storage';
+import { fetchLeaderboard, fetchUserRank, getAuthenticatedUser } from '../utils/firebase';
+import { getUsername } from '../utils/storage';
 import Button3D from '../components/Button3D';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -57,14 +57,16 @@ export default function LeaderboardScreen({ navigation }) {
       const cleanName = rawName ? rawName.trim() : null;
       setCurrentUsername(cleanName);
 
-      const uid = await getUserId();
-      setCurrentUserId(uid);
+      // Use the Firebase Auth UID instead of local storage ID for consistency with security rules
+      const user = await getAuthenticatedUser();
+      const authUid = user.uid;
+      setCurrentUserId(authUid);
       
       const data = await fetchLeaderboard('4x4');
       setLeaderboard(data || []);
       
-      if (uid) {
-        const rankData = await fetchUserRank(uid, '4x4');
+      if (authUid) {
+        const rankData = await fetchUserRank(authUid, '4x4');
         setUserRank(rankData);
       }
     } catch (error) {
