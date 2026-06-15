@@ -9,9 +9,9 @@ const activeStatus = {};
 
 // 1. Premium milestone achievements (512+)
 const TILE_SOUNDS = {
-  512: require('../../assets/sounds/Tile 512.mp3'),
-  1024: require('../../assets/sounds/Tile 1024.mp3'),
-  2048: require('../../assets/sounds/Tile 2048.mp3'),
+  512: require('../../assets/sounds/Tile 512.mp3'), // Note: Spaces in filenames can cause issues on Android. Consider renaming to Tile_512.mp3
+  1024: require('../../assets/sounds/Tile 1024.mp3'), // Note: Spaces in filenames can cause issues on Android. Consider renaming to Tile_1024.mp3
+  2048: require('../../assets/sounds/Tile 2048.mp3'), // Note: Spaces in filenames can cause issues on Android. Consider renaming to Tile_2048.mp3
 };
 
 // 2. Structural UI and movement controls matching your renamed files perfectly

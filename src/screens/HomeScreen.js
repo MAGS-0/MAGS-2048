@@ -305,6 +305,12 @@ export default function HomeScreen({ navigation }) {
           }
         },
         { 
+          text: "Test Review Flow", 
+          onPress: () => {
+            navigation.navigate('Game', { triggerReview: true });
+          }
+        },
+        { 
           text: "Seed Random Data", 
           onPress: async () => {
             await seedLeaderboardWithRandomPlayers();

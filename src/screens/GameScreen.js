@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { StyleSheet, View, Text, Dimensions, PanResponder, Alert, TouchableOpacity, Animated, Easing, Image, NativeModules } from 'react-native';
+import { StyleSheet, View, Text, Dimensions, PanResponder, Alert, TouchableOpacity, Animated, Easing, Image, NativeModules, TextInput, Linking, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Device from 'expo-device';
+import Constants from 'expo-constants';
+import * as Location from 'expo-location';
 import { initializeGrid, moveGrid, isGameOver, spawnTile } from '../utils/gameLogic';
 import { saveGameState, loadGameState, getHighScore, saveHighScore, saveUsername, getUsername, saveCoins, getCoins, getUserAvatar, saveUserAvatar, getUserId } from '../utils/storage';
 import { submitGlobalScore, updateLeaderboardAvatar } from '../utils/firebase';
@@ -47,6 +50,8 @@ const TILE_SLIDE_DURATION = 150; // Optimized for snappy gameplay feel
 const GLOBAL_TOP_PADDING = 60;    // Space from the very top of the screen/notch
 const BOARD_MARGIN_TOP = 70;      // Space between the Header and the Game Board
 const BOARD_MARGIN_BOTTOM = 80;   // Space between the Game Board and the Power-ups
+const YOUR_ANDROID_PACKAGE_NAME = 'com.mags2048.android'; // Replace with your actual Android package name from app.json
+const SUPPORT_EMAIL = 'hello.gogames@gmail.com'; // Replace with your actual support email
 
 const convertNumericGridToObjects = (numericGrid) => {
   if (!Array.isArray(numericGrid)) return numericGrid;
@@ -112,6 +117,7 @@ export default function GameScreen({ navigation }) {
   
   const [newTileCoord, setNewTileCoord] = useState(null);
   const [mergedCoords, setMergedCoords] = useState([]);
+  // State to control whether the confetti celebration overlay is currently active
   const [showConfetti, setShowConfetti] = useState(false);
 
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -136,6 +142,12 @@ export default function GameScreen({ navigation }) {
   const isAnimating = useRef(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
+  // --- FEEDBACK LOOP STATES ---
+  const [showFeedbackPrompt, setShowFeedbackPrompt] = useState(false);
+  const [showDislikeFeedbackModal, setShowDislikeFeedbackModal] = useState(false);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [lastFeedbackPromptDate, setLastFeedbackPromptDate] = useState(null); // Date string (YYYY-MM-DD)
+  const feedbackPromptSkippedSession = useRef(false); // For "Later" in current session
   // --- TUTORIAL NUDGE STATES & ANIMATIONS ---
   const [activeTutorialStep, setActiveTutorialStep] = useState(null); // 'undo' or 'delete'
   const tutorialPulseAnim = useRef(new Animated.Value(1)).current;
@@ -196,6 +208,29 @@ export default function GameScreen({ navigation }) {
     }
     return () => animation && animation.stop();
   }, [showGameOverScreen]);
+
+  // Manual trigger via navigation params (for Dev Tools in HomeScreen)
+  useEffect(() => {
+    if (adContext?.route?.params?.triggerReview) {
+      setShowFeedbackPrompt(true);
+      navigation.setParams({ triggerReview: undefined });
+    }
+  }, [adContext?.route?.params]);
+
+  // Load last feedback prompt date from AsyncStorage
+  useEffect(() => {
+    const loadFeedbackState = async () => {
+      const storedDate = await AsyncStorage.getItem('mags_2048_last_feedback_prompt_date');
+      setLastFeedbackPromptDate(storedDate);
+    };
+    loadFeedbackState();
+  }, []);
+
+  const wasFeedbackPromptShownToday = useMemo(() => {
+    if (!lastFeedbackPromptDate) return false;
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    return lastFeedbackPromptDate === today;
+  }, [lastFeedbackPromptDate]);
 
   useEffect(() => {
     const init = async () => {
@@ -291,6 +326,105 @@ export default function GameScreen({ navigation }) {
     await saveCoins(newBalance);
   };
 
+  const triggerFeedbackLoop = (delay = 3500, ignoreLockout = false) => {
+    if (ignoreLockout || (!wasFeedbackPromptShownToday && !feedbackPromptSkippedSession.current)) {
+      // Use a timeout to allow other animations (confetti, score bounce) to settle
+      setTimeout(() => {
+        setShowFeedbackPrompt(true);
+      }, delay);
+      return true;
+    }
+    return false;
+  };
+
+  const handleFeedbackPromptResponse = async (response) => {
+    setShowFeedbackPrompt(false);
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+    if (response === 'yes') {
+      if (Platform.OS === 'android') {
+        Linking.openURL(`market://details?id=${YOUR_ANDROID_PACKAGE_NAME}`).catch(err => {
+          console.error("Couldn't open Play Store:", err);
+          Alert.alert("Error", "Could not open the Play Store. Please try again later.");
+        });
+      } else if (Platform.OS === 'ios') {
+        // Placeholder for iOS app store link
+        Alert.alert("Thank You!", "Please rate us on the App Store!");
+      }
+      await AsyncStorage.setItem('mags_2048_last_feedback_prompt_date', today);
+      setLastFeedbackPromptDate(today);
+    } else if (response === 'no') {
+      setShowDislikeFeedbackModal(true);
+    } else if (response === 'later') {
+      feedbackPromptSkippedSession.current = true; // Skip for this session
+      await AsyncStorage.setItem('mags_2048_last_feedback_prompt_date', today);
+      setLastFeedbackPromptDate(today);
+    }
+  };
+
+  const handleSendDislikeFeedback = async () => {
+    if (feedbackText.trim().length === 0) {
+      Alert.alert("Feedback Empty", "Please enter your feedback before sending.");
+      return;
+    }
+
+    // Capture device and app info
+    const deviceName = Device.deviceName || Device.modelName || 'Unknown Device';
+    const osVersion = Device.osVersion || 'Unknown OS';
+    const buildVersion = Constants.expoConfig?.version || Constants.nativeAppVersion || '1.0.0';
+
+    let city = 'Unknown', state = 'Unknown', country = 'Unknown';
+
+    // try {
+    //   // Attempt to get location metadata (requires user permission)
+    //   const { status } = await Location.requestForegroundPermissionsAsync();
+    //   if (status === 'granted') {
+    //     const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low });
+    //     const geocode = await Location.reverseGeocodeAsync({
+    //       latitude: location.coords.latitude,
+    //       longitude: location.coords.longitude,
+    //     });
+
+    //     if (geocode && geocode.length > 0) {
+    //       const geo = geocode[0];
+    //       city = geo.city || 'Unknown';
+    //       state = geo.region || 'Unknown';
+    //       country = geo.country || 'Unknown';
+    //     }
+    //   }
+    // } catch (error) {
+    //   console.warn("Metadata capture failed:", error);
+    // }
+
+    const metadata = `\n\n----------\nDevice name: ${deviceName}\nOS version: ${osVersion}\nBuild version: ${buildVersion}\nCity: ${city}\nState: ${state}\nCountry: ${country}`;
+
+    const subject = "Go! 2048 | Feedback";
+    const fullBody = `${feedbackText}${metadata}`;
+    
+    const mailtoUrl = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(fullBody)}`;
+
+    try {
+      await Linking.openURL(mailtoUrl);
+      Alert.alert("Thank You!", "Your feedback has been sent. We appreciate your input!");
+      setShowDislikeFeedbackModal(false);
+      setFeedbackText('');
+      const today = new Date().toISOString().slice(0, 10);
+      await AsyncStorage.setItem('mags_2048_last_feedback_prompt_date', today);
+      setLastFeedbackPromptDate(today);
+    } catch (error) {
+      console.error("Failed to open email client:", error);
+      Alert.alert("Error", "Could not open email client. Please ensure you have one configured.");
+    }
+  };
+
+  const handleCancelDislikeFeedback = async () => {
+    setShowDislikeFeedbackModal(false);
+    setFeedbackText('');
+    const today = new Date().toISOString().slice(0, 10);
+    await AsyncStorage.setItem('mags_2048_last_feedback_prompt_date', today);
+    setLastFeedbackPromptDate(today);
+  };
+
   const launchRewardedAdVideo = () => {
     const success = adContext.showRewardedAd(async () => {
       const updatedCoins = coins + 1;
@@ -320,7 +454,7 @@ export default function GameScreen({ navigation }) {
 
     setNewTileCoord(null);
     setMergedCoords([]);
-    setShowConfetti(false);
+    // setShowConfetti(false);
     setIsDeleteMode(false);
     setShowGameOverScreen(false);
 
@@ -362,7 +496,7 @@ export default function GameScreen({ navigation }) {
         }
       }
 
-      const milestonesToCheck = [2048, 1024, 512, 256, 128];
+      const milestonesToCheck = [2048, 1024, 512, 256, 128, 64];
       for (let m of milestonesToCheck) {
         const currentCount = nextCounts[m] || 0;
         const previousCount = oldCounts[m] || 0;
@@ -475,6 +609,7 @@ export default function GameScreen({ navigation }) {
       const nextMoveCount = powerUpMoveCount + 1;
       setPowerUpMoveCount(nextMoveCount);
       if (isNewUserTutorial && !undoTutorialShown && nextMoveCount === 1) {
+        feedbackPromptSkippedSession.current = false; // Reset skip for new achievement
         setTimeout(() => {
           setUndoTutorialShown(true);
           setActiveTutorialStep('undo');
@@ -482,46 +617,43 @@ export default function GameScreen({ navigation }) {
       } else if (isNewUserTutorial && undoTutorialShown && !deleteTutorialShown && nextMoveCount === 3) {
         setTimeout(() => {
           setDeleteTutorialShown(true);
+          feedbackPromptSkippedSession.current = false; // Reset skip for new achievement
           setActiveTutorialStep('delete');
         }, 600);
       }
 
-      if (milestoneTileFound >= 2048) {
-        // Only award coins and show Alert if it's the absolute first time reaching 2048+
-        if (!achievedMilestones[milestoneTileFound]) {
+      // Handle first-time milestone logic
+      if (milestoneTileFound > 0 && !achievedMilestones[milestoneTileFound]) {
+        const newMilestones = { ...achievedMilestones, [milestoneTileFound]: true };
+        setAchievedMilestones(newMilestones);
+        await AsyncStorage.setItem('mags_achieved_milestones', JSON.stringify(newMilestones));
+
+        // Award coins for 2048+
+        if (milestoneTileFound >= 2048) {
           const updatedCoins = coins + 1;
           await updateWalletCoins(updatedCoins);
-          
           Alert.alert(
             "🪙 Milestone Earned!",
             `Amazing! You unlocked a ${milestoneTileFound} tile for the first time and earned +1 Coin!`,
             [{ text: "Sweet!", style: "default" }]
           );
-
-          const newMilestones = { ...achievedMilestones, [milestoneTileFound]: true };
-          setAchievedMilestones(newMilestones);
-          await AsyncStorage.setItem('mags_achieved_milestones', JSON.stringify(newMilestones));
         }
-      }
 
-      // Trigger special confetti for first-time major milestones
-      if (milestoneTileFound >= 512 && !achievedMilestones[milestoneTileFound]) {
-        setShowConfetti(false);
-        setTimeout(() => setShowConfetti(true), 10);
-        setTimeout(() => setShowConfetti(false), 3000);
+        // Trigger confetti and feedback for 64+
+        if (milestoneTileFound >= 64) {
+          setShowConfetti(false);
+          setTimeout(() => setShowConfetti(true), 10);
+          setTimeout(() => setShowConfetti(false), 3000);
+
+          if (!wasFeedbackPromptShownToday && !feedbackPromptSkippedSession.current) {
+            setTimeout(() => setShowFeedbackPrompt(true), 3500);
+          }
+        }
 
         logGameEvent('score_milestone', {
           tile_value: milestoneTileFound,
           current_total_score: nextScore
         });
-        
-        // If this is the first 512, trigger the review logic after a short delay
-        if (milestoneTileFound === 512) {
-           setTimeout(() => {
-             // Placeholder for Item 4: Review Loop Trigger
-             console.log("Trigger Review Flow: User liked the game enough to reach 512!");
-           }, 3500);
-        }
       }
 
       if (nextScore > highScore) {
@@ -688,7 +820,13 @@ export default function GameScreen({ navigation }) {
     <View style={styles.container} {...panResponder.panHandlers}>
       <View style={styles.header}>
         <View style={styles.titleContainer}>
-          <Text style={styles.title}>Go! 2048</Text>
+          <TouchableOpacity 
+            onLongPress={() => setShowFeedbackPrompt(true)}
+            delayLongPress={2000}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.title}>Go! 2048</Text>
+          </TouchableOpacity>
           <Text style={styles.subtitle}>Slide & Merge to win!</Text>
         </View>
         <View style={styles.scoreBoard}>
@@ -960,7 +1098,60 @@ export default function GameScreen({ navigation }) {
         </View>
       )}
 
-      <Confetti active={showConfetti} />
+      {/* The Confetti component renders a full-screen canvas of falling particles when active is true */}
+      {/* <Confetti active={showConfetti} /> */}
+
+      {/* --- FEEDBACK LOOP MODALS --- */}
+      {showFeedbackPrompt && (
+        <View style={[styles.modalOverlay, { zIndex: 10000 }]}>
+          <View style={styles.feedbackCard}>
+            <Text style={styles.feedbackTitle}>Enjoying Go! 2048?</Text>
+            <Text style={styles.feedbackMessage}>We'd love to hear your thoughts!</Text>
+            <Button3D style={[styles.feedbackButton, { backgroundColor: '#4CAF50' }]} onPress={() => handleFeedbackPromptResponse('yes')}>
+              <Text style={styles.feedbackButtonText}>Yes, I love it!</Text>
+            </Button3D>
+            <Button3D style={[styles.feedbackButton, { backgroundColor: '#FFC107' }]} onPress={() => handleFeedbackPromptResponse('later')}>
+              <Text style={styles.feedbackButtonText}>Later</Text>
+            </Button3D>
+            <Button3D style={[styles.feedbackButton, { backgroundColor: '#F44336' }]} onPress={() => handleFeedbackPromptResponse('no')}>
+              <Text style={styles.feedbackButtonText}>Not really...</Text>
+            </Button3D>
+          </View>
+        </View>
+      )}
+
+      {showDislikeFeedbackModal && (
+        <View style={[styles.modalOverlay, { zIndex: 10000 }]}>
+          <View style={styles.feedbackCard}>
+            <Text style={styles.feedbackTitle}>What didn't you like?</Text>
+            <Text style={styles.feedbackMessage}>Your feedback helps us improve.</Text>
+            <TextInput
+              style={styles.feedbackInput}
+              placeholder="Tell us what went wrong..."
+              placeholderTextColor="#9BA7B0"
+              multiline
+              numberOfLines={4}
+              value={feedbackText}
+              onChangeText={setFeedbackText}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+              <Button3D 
+                style={[styles.feedbackButton, { width: '48%', backgroundColor: '#2196F3' }]} 
+                onPress={handleSendDislikeFeedback}
+              >
+                <Text style={styles.feedbackButtonText}>Send</Text>
+              </Button3D>
+              <Button3D 
+                style={[styles.feedbackButton, { width: '48%', backgroundColor: '#9E9E9E' }]} 
+                onPress={handleCancelDislikeFeedback}
+              >
+                <Text style={styles.feedbackButtonText}>Cancel</Text>
+              </Button3D>
+            </View>
+          </View>
+        </View>
+      )}
+
       <UsernameModal visible={showNameModal} onSave={handleNameSave} />
 
       {activeTutorialStep && (
@@ -1128,6 +1319,14 @@ const styles = StyleSheet.create({
   tutorialMessage: { fontSize: 14, color: '#776e65', textAlign: 'center', marginBottom: 5, lineHeight: 22, fontWeight: '500' },
   tutorialSkipText: { color: '#8f7a66', fontWeight: 'bold', fontSize: 14, textDecorationLine: 'underline' },
   handPointer: { position: 'absolute', fontSize: 48, zIndex: 6000, textShadowColor: 'rgba(0, 0, 0, 0.3)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 },
+
+  // --- FEEDBACK MODAL STYLES ---
+  feedbackCard: { width: width * 0.85, backgroundColor: '#faf8ef', padding: 24, borderRadius: 12, alignItems: 'center' },
+  feedbackTitle: { fontSize: 24, fontWeight: 'bold', color: '#776e65', marginBottom: 10 },
+  feedbackMessage: { fontSize: 16, color: '#8f7a66', textAlign: 'center', marginBottom: 20 },
+  feedbackButton: { width: '80%', paddingVertical: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  feedbackButtonText: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
+  feedbackInput: { width: '100%', height: 100, backgroundColor: '#eee4da', borderRadius: 8, padding: 10, marginBottom: 20, textAlignVertical: 'top', fontSize: 15, color: '#776e65' },
 
   // --- NEW STYLE FOR "TAP HERE" TEXT ---
   tapHereText: {
