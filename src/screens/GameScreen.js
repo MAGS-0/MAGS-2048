@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { StyleSheet, View, Text, Dimensions, PanResponder, Alert, TouchableOpacity, Animated, Easing, Image } from 'react-native';
+import { StyleSheet, View, Text, Dimensions, PanResponder, Alert, TouchableOpacity, Animated, Easing, Image, NativeModules } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeGrid, moveGrid, isGameOver, spawnTile } from '../utils/gameLogic';
 import { saveGameState, loadGameState, getHighScore, saveHighScore, saveUsername, getUsername, saveCoins, getCoins, getUserAvatar, saveUserAvatar, getUserId } from '../utils/storage';
 import { submitGlobalScore, updateLeaderboardAvatar } from '../utils/firebase';
@@ -19,9 +20,33 @@ import {
   playHighScoreSound
 } from '../utils/audioController';
 
-const { width } = Dimensions.get('window');
+// Handle Native BannerAd for Expo Go compatibility
+let BannerAd, BannerAdSize, TestIds;
+try {
+  // Check if the native module exists in the current binary
+  if (!NativeModules.RNGoogleMobileAdsModule && !NativeModules.RNGoogleMobileAdsBannerViewModule) {
+    throw new Error('AdMob Native Module not found');
+  }
+  const AdMob = require('react-native-google-mobile-ads');
+  BannerAd = AdMob.BannerAd;
+  BannerAdSize = AdMob.BannerAdSize;
+  TestIds = AdMob.TestIds;
+} catch (e) {
+  const Mock = require('../utils/admobMock');
+  BannerAd = Mock.BannerAdMock;
+  BannerAdSize = Mock.BannerAdSize;
+  TestIds = Mock.TestIds;
+}
+
+const { width, height } = Dimensions.get('window');
 const CELL_SIZE = (width - 40) / 4;
 const TILE_SLIDE_DURATION = 150; // Optimized for snappy gameplay feel
+
+// --- LAYOUT SPACING CONTROLS ---
+// Adjust these variables to find the perfect empty space for your layout.
+const GLOBAL_TOP_PADDING = 60;    // Space from the very top of the screen/notch
+const BOARD_MARGIN_TOP = 70;      // Space between the Header and the Game Board
+const BOARD_MARGIN_BOTTOM = 80;   // Space between the Game Board and the Power-ups
 
 const convertNumericGridToObjects = (numericGrid) => {
   if (!Array.isArray(numericGrid)) return numericGrid;
@@ -96,11 +121,11 @@ export default function GameScreen({ navigation }) {
   const [isDeleteMode, setIsDeleteMode] = useState(false);
   const [coins, setCoins] = useState(0);
 
-
   const [showAd, setShowAd] = useState(true);
   const [showInterstitialMock, setShowInterstitialMock] = useState(false);
   const [isNewUserTutorial, setIsNewUserTutorial] = useState(false);
   const [powerUpMoveCount, setPowerUpMoveCount] = useState(0);
+  const [achievedMilestones, setAchievedMilestones] = useState({});
   const [undoTutorialShown, setUndoTutorialShown] = useState(false);
   const [deleteTutorialShown, setDeleteTutorialShown] = useState(false);
 
@@ -109,6 +134,68 @@ export default function GameScreen({ navigation }) {
 
   const scoreBounce = useRef(new Animated.Value(1)).current;
   const isAnimating = useRef(false);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // --- TUTORIAL NUDGE STATES & ANIMATIONS ---
+  const [activeTutorialStep, setActiveTutorialStep] = useState(null); // 'undo' or 'delete'
+  const tutorialPulseAnim = useRef(new Animated.Value(1)).current;
+  const handAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    let pulseLoop;
+    let handLoop;
+
+    if (activeTutorialStep) {
+      pulseLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(tutorialPulseAnim, { toValue: 1.1, duration: 500, useNativeDriver: true }),
+          Animated.timing(tutorialPulseAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+        ])
+      );
+      handLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(handAnim, { toValue: 15, duration: 600, useNativeDriver: true }),
+          Animated.timing(handAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+        ])
+      );
+      pulseLoop.start();
+      handLoop.start();
+    } else {
+      tutorialPulseAnim.setValue(1);
+      handAnim.setValue(0);
+    }
+
+    return () => {
+      if (pulseLoop) pulseLoop.stop();
+      if (handLoop) handLoop.stop();
+    };
+  }, [activeTutorialStep]);
+
+  useEffect(() => {
+    let animation;
+    if (showGameOverScreen) {
+      animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.05,
+            duration: 800,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+            easing: Easing.inOut(Easing.ease),
+          }),
+        ])
+      );
+      animation.start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+    return () => animation && animation.stop();
+  }, [showGameOverScreen]);
 
   useEffect(() => {
     const init = async () => {
@@ -130,13 +217,20 @@ export default function GameScreen({ navigation }) {
 
       const saved = await loadGameState();
       if (saved && saved.grid) {
+        let loadedGrid;
         const sampleCell = saved.grid && saved.grid[0] && saved.grid[0][0];
         if (typeof sampleCell === 'number') {
-          setGrid(convertNumericGridToObjects(saved.grid));
+          loadedGrid = convertNumericGridToObjects(saved.grid);
         } else {
-          setGrid(saved.grid);
+          loadedGrid = saved.grid;
         }
+        setGrid(loadedGrid);
         setScore(saved.score);
+
+        // Check if the restored game state is already in a Game Over condition
+        if (isGameOver(loadedGrid)) {
+          setShowGameOverScreen(true);
+        }
       } else {
         playGameStateSound('start', soundEnabled, hapticEnabled);
       }
@@ -151,6 +245,10 @@ export default function GameScreen({ navigation }) {
 
       const storedAvatar = await getUserAvatar();
       setAvatarId(storedAvatar);
+
+      // Load achieved milestones to prevent repeating animations
+      const milestones = await AsyncStorage.getItem('mags_achieved_milestones');
+      if (milestones) setAchievedMilestones(JSON.parse(milestones));
 
       logGameEvent('screen_view', {
         screen_name: 'GameScreen',
@@ -234,7 +332,8 @@ export default function GameScreen({ navigation }) {
   };
 
   const handleMove = async (direction) => {
-    if (isDeleteMode || showGameOverScreen || isAnimating.current === true) return;
+    // Block moves if a tutorial nudge is active to force interaction with the power-up
+    if (isDeleteMode || showGameOverScreen || isAnimating.current === true || activeTutorialStep) return;
 
     const result = moveGrid(grid, direction);
 
@@ -376,50 +475,52 @@ export default function GameScreen({ navigation }) {
       const nextMoveCount = powerUpMoveCount + 1;
       setPowerUpMoveCount(nextMoveCount);
       if (isNewUserTutorial && !undoTutorialShown && nextMoveCount === 1) {
-        setUndoTutorialShown(true);
         setTimeout(() => {
-          Alert.alert(
-            'Power-Up Tip',
-            'Great first move! Use your free coin by tapping the Undo button to revert it and learn how the power-up works.',
-            [
-              { text: 'Later', style: 'cancel' },
-              { text: 'Try Undo', onPress: handleUndo }
-            ]
-          );
-        }, 200);
+          setUndoTutorialShown(true);
+          setActiveTutorialStep('undo');
+        }, 600);
       } else if (isNewUserTutorial && undoTutorialShown && !deleteTutorialShown && nextMoveCount === 3) {
-        setDeleteTutorialShown(true);
         setTimeout(() => {
-          Alert.alert(
-            'Power-Up Tip',
-            'Nice progress! Now try the Delete power-up to remove a tile and keep your game going.',
-            [
-              { text: 'Later', style: 'cancel' },
-              { text: 'Try Delete', onPress: toggleDeleteMode }
-            ]
-          );
-        }, 200);
+          setDeleteTutorialShown(true);
+          setActiveTutorialStep('delete');
+        }, 600);
       }
 
       if (milestoneTileFound >= 2048) {
-        const updatedCoins = coins + 1;
-        await updateWalletCoins(updatedCoins);
-        
-        Alert.alert(
-          "🪙 Milestone Earned!",
-          `Amazing! You unlocked a ${milestoneTileFound} tile and earned +1 Coin! Keep it up.`,
-          [{ text: "Sweet!", style: "default" }]
-        );
+        // Only award coins and show Alert if it's the absolute first time reaching 2048+
+        if (!achievedMilestones[milestoneTileFound]) {
+          const updatedCoins = coins + 1;
+          await updateWalletCoins(updatedCoins);
+          
+          Alert.alert(
+            "🪙 Milestone Earned!",
+            `Amazing! You unlocked a ${milestoneTileFound} tile for the first time and earned +1 Coin!`,
+            [{ text: "Sweet!", style: "default" }]
+          );
+
+          const newMilestones = { ...achievedMilestones, [milestoneTileFound]: true };
+          setAchievedMilestones(newMilestones);
+          await AsyncStorage.setItem('mags_achieved_milestones', JSON.stringify(newMilestones));
+        }
+      }
+
+      // Trigger special confetti for first-time major milestones
+      if (milestoneTileFound >= 512 && !achievedMilestones[milestoneTileFound]) {
+        setShowConfetti(false);
+        setTimeout(() => setShowConfetti(true), 10);
+        setTimeout(() => setShowConfetti(false), 3000);
 
         logGameEvent('score_milestone', {
           tile_value: milestoneTileFound,
           current_total_score: nextScore
         });
-
-        if (milestoneTileFound >= 512) {
-          setShowConfetti(false);
-          setTimeout(() => setShowConfetti(true), 10);
-          setTimeout(() => setShowConfetti(false), 2000);
+        
+        // If this is the first 512, trigger the review logic after a short delay
+        if (milestoneTileFound === 512) {
+           setTimeout(() => {
+             // Placeholder for Item 4: Review Loop Trigger
+             console.log("Trigger Review Flow: User liked the game enough to reach 512!");
+           }, 3500);
         }
       }
 
@@ -432,6 +533,7 @@ export default function GameScreen({ navigation }) {
   };
 
   const handleUndo = async () => {
+    if (activeTutorialStep === 'undo') setActiveTutorialStep(null);
     if (coins < 1) {
       Alert.alert(
         "Insufficient Coins", 
@@ -445,6 +547,10 @@ export default function GameScreen({ navigation }) {
     }
 
     if (history.length > 0) {
+      // Safety: Reset animation flag to ensure board isn't locked 
+      // if undo is triggered during a transition or immediately after game over
+      isAnimating.current = false;
+
       logGameEvent('powerup_used', { type: 'undo_move', score_at_time_of_use: score });
       playPowerUpSound('undo', soundEnabled, hapticEnabled);
 
@@ -463,6 +569,7 @@ export default function GameScreen({ navigation }) {
   };
 
   const handleTileSelect = async (r, c) => {
+    if (activeTutorialStep === 'delete_select') setActiveTutorialStep(null);
     if (!isDeleteMode) return;
     if (grid[r][c] === null) return;
 
@@ -500,6 +607,14 @@ export default function GameScreen({ navigation }) {
   };
 
   const toggleDeleteMode = () => {
+    if (activeTutorialStep === 'delete') {
+      setActiveTutorialStep('delete_select');
+      setIsDeleteMode(true);
+      return;
+    }
+    // Mandatory flow: prevent toggling off during the selection nudge
+    if (activeTutorialStep === 'delete_select') return;
+
     if (coins < 2 && !isDeleteMode) {
       Alert.alert(
         "Insufficient Coins", 
@@ -543,8 +658,31 @@ export default function GameScreen({ navigation }) {
         if (dy > 30) handleMove('down');
         else if (dy < -30) handleMove('up');
       }
-    }, // No semicolon here
+    },
   }), [grid, isDeleteMode, showGameOverScreen, handleMove]);
+
+  const pointerProps = useMemo(() => {
+    if (!activeTutorialStep) {
+      return { left: 0, bottom: 0, emoji: '', tutorialText: null };
+    }
+    let left = activeTutorialStep === 'undo' ? width * 0.21 : width * 0.69;
+    let bottom = 190;
+    let tutorialText = null;
+    let emoji = activeTutorialStep === 'delete_select' ? "👆" : "👇";
+
+    if (activeTutorialStep === 'delete_select') {
+      let tr = 1.5, tc = 1.5;
+      if (newTileCoord) {
+        const coords = newTileCoord.split('-');
+        tr = parseInt(coords[0], 10);
+        tc = parseInt(coords[1], 10);
+      }
+      left = 20 + tc * CELL_SIZE + (CELL_SIZE * 0.7) - 24;
+      bottom = (height * 0.52) + (1.5 - tr) * CELL_SIZE - 40;
+      tutorialText = "TAP HERE";
+    }
+    return { left, bottom, emoji, tutorialText };
+  }, [activeTutorialStep, newTileCoord, width, height, CELL_SIZE]);
 
   return (
     <View style={styles.container} {...panResponder.panHandlers}>
@@ -608,6 +746,7 @@ export default function GameScreen({ navigation }) {
                   cellSize={CELL_SIZE} 
                   isNew={newTileCoord === `${tile.r}-${tile.c}`} 
                   isMerged={mergedCoords.includes(`${tile.r}-${tile.c}`)}
+                  isHighlighted={activeTutorialStep === 'delete_select' && newTileCoord === `${tile.r}-${tile.c}`}
                   slideDuration={TILE_SLIDE_DURATION}
                   r={tile.r}
                   c={tile.c}
@@ -637,33 +776,47 @@ export default function GameScreen({ navigation }) {
         <Text style={styles.powerUpsTitle}>POWER-UPS</Text>
         
         <View style={styles.powerUpRow}>
-          <Button3D 
-            style={[
-              styles.powerUpBtn, 
-              styles.undoBtn, 
-              history.length === 0 && styles.disabledBtn
-            ]} 
-            onPress={handleUndo}
-            disabled={history.length === 0}
-          >
-            <Text style={[styles.powerUpBtnText, history.length === 0 && styles.disabledBtnText]}>
-              ↩ Undo  <Text style={styles.coinCostBadge}>1 🪙</Text>
-            </Text>
-          </Button3D>
+          <Animated.View style={{ 
+            width: '48.5%', 
+            transform: [{ scale: activeTutorialStep === 'undo' ? tutorialPulseAnim : 1 }],
+            zIndex: activeTutorialStep === 'undo' ? 3001 : 1 
+          }}>
+            <Button3D 
+              style={[
+                styles.powerUpBtn, 
+                styles.undoBtn, 
+                history.length === 0 && styles.disabledBtn,
+                { width: '100%' }
+              ]} 
+              onPress={handleUndo}
+              disabled={history.length === 0}
+            >
+              <Text style={[styles.powerUpBtnText, history.length === 0 && styles.disabledBtnText]}>
+                ↩ Undo  <Text style={styles.coinCostBadge}>1 🪙</Text>
+              </Text>
+            </Button3D>
+          </Animated.View>
 
-          <Button3D 
-            style={[
-              styles.powerUpBtn, 
-              styles.deleteBtn, 
-              isDeleteMode && styles.activeDeleteBtn
-            ]} 
-            onPress={toggleDeleteMode}
-          >
-            <Text style={styles.powerUpBtnText}>
-              {isDeleteMode ? "📭 Select Tile..." : "✕ Delete  "}
-              {!isDeleteMode && <Text style={styles.coinCostBadge}>2 🪙</Text>}
-            </Text>
-          </Button3D>
+          <Animated.View style={{ 
+            width: '48.5%', 
+            transform: [{ scale: activeTutorialStep === 'delete' ? tutorialPulseAnim : 1 }],
+            zIndex: activeTutorialStep === 'delete' ? 3001 : 1 
+          }}>
+            <Button3D 
+              style={[
+                styles.powerUpBtn, 
+                styles.deleteBtn, 
+                isDeleteMode && styles.activeDeleteBtn,
+                { width: '100%' }
+              ]} 
+              onPress={toggleDeleteMode}
+            >
+              <Text style={styles.powerUpBtnText}>
+                {isDeleteMode ? "📭 Select Tile..." : "✕ Delete  "}
+                {!isDeleteMode && <Text style={styles.coinCostBadge}>2 🪙</Text>}
+              </Text>
+            </Button3D>
+          </Animated.View>
         </View>
 
         <View style={styles.powerUpRow}>
@@ -761,31 +914,37 @@ export default function GameScreen({ navigation }) {
             <Text style={styles.gameOverHelpText}>Spend coins to purchase a lifeline power-up or restart clean:</Text>
 
             <View style={styles.gameOverBtnRow}>
-              <Button3D 
-                style={[
-                  styles.gameOverBtn, 
-                  styles.undoBtn, 
-                  history.length === 0 && styles.disabledBtn
-                ]} 
-                onPress={handleUndo}
-                disabled={history.length === 0}
-              >
-                <Text style={styles.powerUpBtnText}>
-                  ↩ Undo (1 🪙)
-                </Text>
-              </Button3D>
+              <Animated.View style={{ width: '48.5%', transform: [{ scale: pulseAnim }] }}>
+                <Button3D 
+                  style={[
+                    styles.gameOverBtn, 
+                    styles.undoBtn, 
+                    history.length === 0 && styles.disabledBtn,
+                    { width: '100%' }
+                  ]} 
+                  onPress={handleUndo}
+                  disabled={history.length === 0}
+                >
+                  <Text style={styles.powerUpBtnText}>
+                    ↩ Undo (1 🪙)
+                  </Text>
+                </Button3D>
+              </Animated.View>
 
-              <Button3D 
-                style={[
-                  styles.gameOverBtn,
-                  styles.deleteBtn
-                ]} 
-                onPress={triggerGameOverDeleteMode}
-              >
-                <Text style={styles.powerUpBtnText}>
-                  ✕ Delete (2 🪙)
-                </Text>
-              </Button3D>
+              <Animated.View style={{ width: '48.5%', transform: [{ scale: pulseAnim }] }}>
+                <Button3D 
+                  style={[
+                    styles.gameOverBtn,
+                    styles.deleteBtn,
+                    { width: '100%' }
+                  ]} 
+                  onPress={triggerGameOverDeleteMode}
+                >
+                  <Text style={styles.powerUpBtnText}>
+                    ✕ Delete (2 🪙)
+                  </Text>
+                </Button3D>
+              </Animated.View>
             </View>
 
             <View style={styles.gameOverBtnRow}>
@@ -803,13 +962,67 @@ export default function GameScreen({ navigation }) {
 
       <Confetti active={showConfetti} />
       <UsernameModal visible={showNameModal} onSave={handleNameSave} />
+
+      {activeTutorialStep && (
+        <View style={[styles.tutorialOverlay, { zIndex: 9999 }]} pointerEvents="box-none">
+          <View style={styles.tutorialDimmer} pointerEvents="none" />
+          {activeTutorialStep !== 'delete_select' && (
+            <Animated.View style={styles.tutorialCard}>
+              <Text style={styles.tutorialTitle}>
+                {activeTutorialStep === 'undo' ? "💡 TIP: UNDO MOVE" : "💡 TIP: DELETE TILE"}
+              </Text>
+              <Text style={styles.tutorialMessage}>
+                {activeTutorialStep === 'undo' 
+                  ? "Made a mistake? Use Undo to revert your last move. It helps you stay in the game longer!" 
+                  : "Is the board getting crowded? Use Delete to remove any tile and create more space!"}
+              </Text>
+            </Animated.View>
+          )}
+          <Animated.Text
+            pointerEvents="none"
+            style={[
+              styles.handPointer,
+              {
+                transform: [{ translateY: handAnim }],
+                left: pointerProps.left,
+                bottom: pointerProps.bottom
+              }
+            ]}
+          >
+            {pointerProps?.emoji}
+          </Animated.Text>
+
+          {/* New Text Label for "TAP HERE" */}
+          {pointerProps?.tutorialText && (
+            <Animated.Text
+              pointerEvents="none"
+              style={[
+                styles.tapHereText,
+                {
+                  left: pointerProps.left + 30, // Position relative to hand pointer
+                  bottom: pointerProps.bottom + 20, // Position relative to hand pointer
+                  transform: [{ scale: tutorialPulseAnim }] // Reuse tutorialPulseAnim for text
+                }
+              ]}
+            >
+              {pointerProps.tutorialText}
+            </Animated.Text>
+          )}
+        </View>
+      )}
+
+      {!isAdsRemoved && (
+        <View style={styles.adWrapperBottom}>
+          <BannerAd unitId={__DEV__ ? TestIds.BANNER : "ca-app-pub-2731691947572564/9661697789"} size={BannerAdSize.BANNER} />
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#faf8ef', alignItems: 'center', justifyContent: 'flex-start', paddingVertical: 10, paddingTop: 60 },
-  header: { flexDirection: 'row', width: width - 40, justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
+  container: { flex: 1, backgroundColor: '#faf8ef', alignItems: 'center', justifyContent: 'flex-start', paddingVertical: 10, paddingTop: GLOBAL_TOP_PADDING },
+  header: { flexDirection: 'row', width: width - 40, justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 },
   titleContainer: { alignItems: 'flex-start' },
   title: { fontSize: 36, fontWeight: 'bold', color: '#776e65', lineHeight: 38 },
   subtitle: { color: '#776e65', fontSize: 13, fontWeight: '500', opacity: 0.8 },
@@ -818,7 +1031,7 @@ const styles = StyleSheet.create({
   scoreLabel: { color: '#eee4da', fontSize: 10, fontWeight: 'bold' },
   scoreValue: { color: '#ffffff', fontSize: 16, fontWeight: 'bold' },
   
-  coinWalletContainer: { backgroundColor: '#e1b024', borderWidth: 1, borderColor: '#cca01d', minWidth: 68 },
+  coinWalletContainer: { backgroundColor: '#e1b024', minWidth: 68 },
   coinLabelText: { color: '#ffffff', opacity: 0.95 },
   coinValueText: { color: '#ffffff', fontSize: 14, fontWeight: 'bold' },
 
@@ -828,17 +1041,17 @@ const styles = StyleSheet.create({
   adCloseBtn: { paddingHorizontal: 4 },
   adCloseText: { color: '#ffffff', fontSize: 18, fontWeight: 'bold', opacity: 0.7 },
 
-  grid: { width: width - 40, height: width - 40, backgroundColor: '#bbada0', borderRadius: 6, position: 'relative', overflow: 'hidden' },
+  grid: { width: width - 40, height: width - 40, backgroundColor: '#bbada0', borderRadius: 6, position: 'relative', overflow: 'hidden', marginTop: BOARD_MARGIN_TOP, marginBottom: BOARD_MARGIN_BOTTOM },
   backgroundGrid: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', flexWrap: 'wrap', padding: 5 },
   tileContainer: { ...StyleSheet.absoluteFillObject, padding: 5 },
   cellPlaceholder: { width: (width - 50) / 4 - 10, height: (width - 50) / 4 - 10, margin: 5, borderRadius: 5, backgroundColor: 'rgba(238, 228, 218, 0.35)' },
 
-  powerUpsWrapper: { width: width - 40, marginTop: 20 },
+  powerUpsWrapper: { width: width - 40, marginTop: 0 },
   powerUpsTitle: { fontSize: 11, fontWeight: 'bold', color: '#bbada0', marginBottom: 6, letterSpacing: 0.5 },
   powerUpRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   powerUpBtn: { paddingVertical: 14, borderRadius: 6, width: '48.5%', alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 4 },
   powerUpBtnText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
-  coinCostBadge: { backgroundColor: 'rgba(0,0,0,0.18)', fontSize: 12, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10, overflow: 'hidden', color: '#fff', fontWeight: 'bold' },
+  coinCostBadge: { fontSize: 12, paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10, overflow: 'hidden', color: '#fff', fontWeight: 'bold' },
   
   undoBtn: { backgroundColor: '#f9945c' },
   deleteBtn: { backgroundColor: '#ff6b54' },
@@ -884,7 +1097,7 @@ const styles = StyleSheet.create({
   interstitialCloseBtnDisabled: { backgroundColor: '#bdc3c7' },
   interstitialCloseText: { color: '#ffffff', fontWeight: 'bold', fontSize: 16 },
 
-  adWrapperBottom: { position: 'absolute', bottom: 10, width: width, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  adWrapperBottom: { position: 'absolute', bottom: 0, width: width, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
   removeAdsBtn: { width: width - 40, backgroundColor: '#e1b024', paddingVertical: 10, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   removeAdsBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
 
@@ -905,8 +1118,31 @@ const styles = StyleSheet.create({
 
   gameOverHelpText: { color: '#776e65', fontSize: 13, textAlign: 'center', marginBottom: 20, opacity: 0.8, paddingHorizontal: 10 },
   gameOverBtnRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 12 },
-  gameOverBtn: { paddingVertical: 14, borderRadius: 6, width: '48.5%', alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 4 }
+  gameOverBtn: { paddingVertical: 14, borderRadius: 6, width: '48.5%', alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 4 },
+
+  // --- TUTORIAL OVERLAY STYLES ---
+  tutorialOverlay: { ...StyleSheet.absoluteFillObject, pointerEvents: 'box-none', justifyContent: 'center', alignItems: 'center' }, // zIndex moved to inline style
+  tutorialDimmer: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
+  tutorialCard: { width: width * 0.84, backgroundColor: '#fff', padding: 22, borderRadius: 14, alignItems: 'center', elevation: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 6 },
+  tutorialTitle: { fontSize: 18, fontWeight: 'bold', color: '#776e65', marginBottom: 10 },
+  tutorialMessage: { fontSize: 14, color: '#776e65', textAlign: 'center', marginBottom: 5, lineHeight: 22, fontWeight: '500' },
+  tutorialSkipText: { color: '#8f7a66', fontWeight: 'bold', fontSize: 14, textDecorationLine: 'underline' },
+  handPointer: { position: 'absolute', fontSize: 48, zIndex: 6000, textShadowColor: 'rgba(0, 0, 0, 0.3)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 },
+
+  // --- NEW STYLE FOR "TAP HERE" TEXT ---
+  tapHereText: {
+    position: 'absolute',
+    backgroundColor: '#e1b024',
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 5,
+    zIndex: 6001, // Ensure it's above the hand pointer
+  }
 });
+
 
 
 

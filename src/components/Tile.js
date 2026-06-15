@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text } from 'react-native';
+import { Animated, StyleSheet, Text, Easing } from 'react-native';
 
-export default function Tile({ value, cellSize, isNew, isMerged, slideDuration = 150 }) {
+export default function Tile({ value, cellSize, isNew, isMerged, slideDuration = 150, isHighlighted }) {
   // 1. Setup clean scale animation nodes
   const scaleValue = useRef(new Animated.Value(isNew ? 0 : 1)).current;
   const pulseValue = useRef(new Animated.Value(1)).current; // This will be used for merge animation
+  const highlightAnim = useRef(new Animated.Value(0)).current;
 
   // Internal state to delay the value change until the slide completes
   const [displayValue, setDisplayValue] = useState(value);
@@ -53,6 +54,34 @@ export default function Tile({ value, cellSize, isNew, isMerged, slideDuration =
     }
   }, [value, isNew, isMerged, slideDuration]);
 
+  // --- HIGHLIGHT ANIMATION ---
+  useEffect(() => {
+    let animation;
+    if (isHighlighted) {
+      highlightAnim.setValue(0); // Start from 0 opacity
+      animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(highlightAnim, {
+            toValue: 1, // Full opacity
+            duration: 600,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(highlightAnim, {
+            toValue: 0, // Back to 0 opacity
+            duration: 600,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      animation.start();
+    } else {
+      highlightAnim.setValue(0); // Reset when not highlighted
+    }
+    return () => animation && animation.stop();
+  }, [isHighlighted]);
+
   const getTileStyle = (val) => {
     const colors = {
       2: '#eee4da',
@@ -91,8 +120,16 @@ export default function Tile({ value, cellSize, isNew, isMerged, slideDuration =
     { scale: pulseValue }
   ];
 
+  const highlightStyle = isHighlighted ? {
+    borderColor: '#e1b024',
+    shadowColor: '#e1b024',
+    shadowOpacity: highlightAnim, // Animate shadowOpacity
+    shadowRadius: 10,
+    borderWidth: 3,
+  } : {};
+
   return (
-    <Animated.View style={[styles.tile, tileStyle, { transform: combinedTransform }]}>
+    <Animated.View style={[styles.tile, tileStyle, { transform: combinedTransform }, highlightStyle]}>
       <Text style={[styles.text, textStyle]}>
         {displayValue}
       </Text>

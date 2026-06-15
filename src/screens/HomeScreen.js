@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, Animated, Image } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, Animated, Image, NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getUsername, saveUsername, getUserAvatar, saveUserAvatar, getCoins, saveCoins, getUserId, clearStorage } from '../utils/storage';
 import UsernameModal from '../components/UsernameModal';
@@ -12,6 +12,24 @@ import {
   seedLeaderboardWithRandomPlayers 
 } from '../utils/firebase';
 import { playCoinRewardSound } from '../utils/audioController';
+
+// Handle Native BannerAd for Expo Go compatibility
+let BannerAd, BannerAdSize, TestIds;
+try {
+  // Check if the native module exists in the current binary
+  if (!NativeModules.RNGoogleMobileAdsModule && !NativeModules.RNGoogleMobileAdsBannerViewModule) {
+    throw new Error('AdMob Native Module not found');
+  }
+  const AdMob = require('react-native-google-mobile-ads');
+  BannerAd = AdMob.BannerAd;
+  BannerAdSize = AdMob.BannerAdSize;
+  TestIds = AdMob.TestIds;
+} catch (e) {
+  const Mock = require('../utils/admobMock');
+  BannerAd = Mock.BannerAdMock;
+  BannerAdSize = Mock.BannerAdSize;
+  TestIds = Mock.TestIds;
+}
 
 const { width, height } = Dimensions.get('window');
 
@@ -337,8 +355,8 @@ export default function HomeScreen({ navigation }) {
       <View style={styles.topHeaderControlBar}>
         <View style={styles.brandingNode}>
           <TouchableOpacity 
-            // onLongPress={handleDevTools} 
-            // delayLongPress={1500} 
+            onLongPress={handleDevTools} 
+            delayLongPress={1500} 
             activeOpacity={0.8}
           >
             <Text style={styles.headerTitleBrand}>Go! 2048</Text>
@@ -470,6 +488,12 @@ export default function HomeScreen({ navigation }) {
         initialAvatar={currentAvatar}
       />
 
+      {!isPremiumUser && (
+        <View style={styles.adWrapperBottom}>
+          <BannerAd unitId={__DEV__ ? TestIds.BANNER : "ca-app-pub-2731691947572564/9661697789"} size={BannerAdSize.BANNER} />
+        </View>
+      )}
+
     </View>
   );
 }
@@ -539,3 +563,4 @@ const styles = StyleSheet.create({
   claimAdBtnDisabled: { backgroundColor: '#333' },
   claimAdText: { color: '#fff', fontWeight: 'bold', fontSize: 14 }
 });
+ 

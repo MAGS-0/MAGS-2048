@@ -20,6 +20,9 @@ const UI_SOUNDS = {
   swipe_h: require('../../assets/sounds/swipe_horizontal.mp3'),
   undo: require('../../assets/sounds/undo.mp3'),
   delete: require('../../assets/sounds/delete.mp3'),
+  // Add new sounds for game state and rewards
+  highScore: require('../../assets/sounds/high_score.mp3'),
+  coinReward: require('../../assets/sounds/coin_reward.mp3'),
   start: require('../../assets/sounds/game_start.mp3'),
   gameover: require('../../assets/sounds/game_over.mp3'),
 };
@@ -43,6 +46,7 @@ export const preloadGameAudio = async () => {
         const asset = Asset.fromModule(source);
         await asset.downloadAsync(); // Ensure file is locally available
         
+        console.log(`[🔊 AUDIO] Preloading tile sound: tile_${key}`); // Debug log
         const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: false });
         soundObjects[`tile_${key}`] = sound;
         activeStatus[`tile_${key}`] = false;
@@ -55,6 +59,7 @@ export const preloadGameAudio = async () => {
         const asset = Asset.fromModule(source);
         await asset.downloadAsync(); // Ensure file is locally available
         
+        console.log(`[🔊 AUDIO] Preloading UI sound: ${key}`); // Debug log
         const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: false });
         soundObjects[key] = sound;
         activeStatus[key] = false;
@@ -161,13 +166,13 @@ export const playGameStateSound = (state, soundOn, hapticOn) => {
 };
 
 export const playHighScoreSound = (soundOn, hapticOn) => {
-  executeFeedback(null, 'heavy', soundOn, hapticOn);
+  executeFeedback('highScore', 'heavy', soundOn, hapticOn); // Use 'highScore' key
 };
 
 export const playCoinRewardSound = (soundOn, hapticOn) => {
-  executeFeedback(null, 'medium', soundOn, hapticOn);
+  executeFeedback('coinReward', 'medium', soundOn, hapticOn); // Use 'coinReward' key
 };
 
 export const playPremiumUnlockedSound = (soundOn, hapticOn) => {
-  executeFeedback(null, 'heavy', soundOn, hapticOn);
+  executeFeedback('premiumUnlocked', 'heavy', soundOn, hapticOn); // Assuming you have this sound
 };

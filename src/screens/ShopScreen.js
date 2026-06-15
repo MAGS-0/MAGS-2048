@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Dimensions, Alert, ActivityIndicator, NativeModules } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -7,7 +7,25 @@ import Button3D from '../components/Button3D';
 import { useAds } from '../context/AdContext';
 import { getCoins, saveCoins } from '../utils/storage';
 import { logGameEvent } from '../utils/analytics';
-// import { useIAP } from 'react-native-iap';
+
+// Safe IAP Hook for Expo Go compatibility
+let useIAP = () => ({
+  connected: false,
+  products: [],
+  getProducts: () => {},
+  requestPurchase: () => Alert.alert('Notice', 'IAP is not available in Expo Go.'),
+  currentPurchase: null,
+  finishTransaction: () => {},
+});
+
+try {
+  // Verify native IAP module presence
+  if (!NativeModules.RNIapModule && !NativeModules.RNIapAmazonModule) {
+    throw new Error('IAP Native Module not found');
+  }
+  const iap = require('react-native-iap');
+  if (iap.useIAP) useIAP = iap.useIAP;
+} catch (e) {}
 
 const { width } = Dimensions.get('window');
 const PRODUCT_ID = 'com.mags2048.remove_ads_daily_coins';
@@ -16,41 +34,41 @@ export default function ShopScreen({ navigation }) {
   const { adsRemoved, setAdsRemovedStatus } = useAds();
   const [isPurchasing, setIsPurchasing] = useState(false);
 
-  // const {
-  //   connected,
-  //   products,
-  //   getProducts,
-  //   requestPurchase,
-  //   currentPurchase,
-  //   finishTransaction: iapFinishTransaction,
-  // } = useIAP();
+  const {
+    connected,
+    products,
+    getProducts,
+    requestPurchase,
+    currentPurchase,
+    finishTransaction: iapFinishTransaction,
+  } = useIAP();
 
   // Load product details from the store on mount
-  // useEffect(() => {
-  //   if (connected) {
-  //     getProducts({ skus: [PRODUCT_ID] });
-  //   }
-  // }, [connected]);
+  useEffect(() => {
+    if (connected) {
+      getProducts({ skus: [PRODUCT_ID] });
+    }
+  }, [connected, getProducts]);
 
   // Listen for successful transactions
-  // useEffect(() => {
-  //   const checkCurrentPurchase = async () => {
-  //     // Process if we have a purchase and it hasn't been applied to the account yet.
-  //     // Removed "isPurchasing" from the condition to allow recovery from app crashes during checkout.
-  //     if (currentPurchase && !adsRemoved) {
-  //       try {
-  //         // Finalize the transaction in the store
-  //         await iapFinishTransaction({ purchase: currentPurchase });
-  //         setIsPurchasing(false); // Ensure purchasing state is reset
-  //         await handleSuccess();
-  //       } catch (error) {
-  //         console.error('Error finishing transaction', error);
-  //         setIsPurchasing(false);
-  //       }
-  //     }
-  //   };
-  //   checkCurrentPurchase();
-  // }, [currentPurchase, adsRemoved, iapFinishTransaction, handleSuccess]); // Added iapFinishTransaction and handleSuccess to dependencies
+  useEffect(() => {
+    const checkCurrentPurchase = async () => {
+      // Process if we have a purchase and it hasn't been applied to the account yet.
+      // Removed "isPurchasing" from the condition to allow recovery from app crashes during checkout.
+      if (currentPurchase && !adsRemoved) {
+        try {
+          // Finalize the transaction in the store
+          await iapFinishTransaction({ purchase: currentPurchase });
+          setIsPurchasing(false); // Ensure purchasing state is reset
+          await handleSuccess();
+        } catch (error) {
+          console.error('Error finishing transaction', error);
+          setIsPurchasing(false);
+        }
+      }
+    };
+    checkCurrentPurchase();
+  }, [currentPurchase, adsRemoved, iapFinishTransaction, handleSuccess]); // Added iapFinishTransaction and handleSuccess to dependencies
 
   const handleSuccess = async () => {
     await setAdsRemovedStatus(true);

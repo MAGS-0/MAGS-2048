@@ -1,9 +1,15 @@
-import analytics from '@react-native-firebase/analytics';
-
 export const logGameEvent = async (eventName, params = {}) => {
   try {
-    // 1. Send the telemetry payload directly to the live Firebase cloud network
-    await analytics().logEvent(eventName, params);
+    // Safe attempt for native Firebase Analytics (Standalone/Dev Client only)
+    try {
+      const analytics = require('@react-native-firebase/analytics').default;
+      const instance = analytics();
+      if (instance) {
+        await instance.logEvent(eventName, params);
+      }
+    } catch (e) {
+      // Native module not found (e.g. standard Expo Go), skip silently
+    }
 
     // 2. Beautiful terminal logging fallback during local development testing
     if (__DEV__) {
